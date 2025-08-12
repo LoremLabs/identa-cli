@@ -1,7 +1,8 @@
-import chalk from 'chalk';
-import prompts from 'prompts';
-import config from '../lib/config.js';
 import { IdentClient } from '../../../ident-agency-sdk/lib-js/index.js';
+import chalk from 'chalk';
+import config from '../lib/config.js';
+import prompts from 'prompts';
+import { resolveApiBaseUrl } from '../lib/api-url.js';
 
 export const description = 'Login to Ident.Agency using OAuth2/PKCE flow';
 
@@ -10,9 +11,10 @@ Usage:
   $ identa login [flags]
 
 Flags:
-  --scope    Custom scopes to request (space-separated)
-  --timeout  Authentication timeout in seconds (default: 120)
-  --debug    Enable debug output
+  --scope     Custom scopes to request (space-separated)
+  --timeout   Authentication timeout in seconds (default: 120)
+  --api-url   API base URL (default: config or https://www.ident.agency)
+  --debug     Enable debug output
 
 Description:
   Authenticates with Ident.Agency using OAuth2/PKCE flow.
@@ -29,6 +31,9 @@ Examples:
   
   # Login with custom timeout (60 seconds)
   $ identa login --timeout 60
+  
+  # Login with development server
+  $ identa login --api-url http://localhost:5173
   
   # Login with debug information
   $ identa login --debug
@@ -105,11 +110,14 @@ export const exec = async (context) => {
       },
     };
 
+    // Resolve API base URL with fallback logic: flag -> config -> production default
+    const apiBaseUrl = resolveApiBaseUrl(context.flags.apiUrl, context.flags.debug);
+
     // Create SDK client instance
     const client = IdentClient.create({
-      apiBaseUrl: 'http://localhost:5173', // Development server
+      apiBaseUrl,
       clientId: 'ident-cli', // CLI client ID
-      scopes: ['profile', 'vault.read', 'vault.write', 'vault.decrypt'],
+      scopes: ['user'],
       passwordProvider,
     });
 

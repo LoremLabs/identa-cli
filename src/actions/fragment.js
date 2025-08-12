@@ -2,6 +2,7 @@ import { IdentClient } from '../../../ident-agency-sdk/lib-js/index.js';
 import chalk from 'chalk';
 import prompts from 'prompts';
 import config from '../lib/config.js';
+import { resolveApiBaseUrl } from '../lib/api-url.js';
 
 export const description = 'Manage fragments (get, put, list, delete)';
 
@@ -67,9 +68,12 @@ export const exec = async (context) => {
     console.log(chalk.blue('🔧 API retries disabled'));
   }
 
+  // Resolve API base URL with fallback logic: flag -> config -> production default
+  const apiBaseUrl = resolveApiBaseUrl(context.flags.apiUrl, context.flags.debug);
+
   // Create SDK client instance
   const client = IdentClient.create({
-    apiBaseUrl: 'http://localhost:5173', // Development server
+    apiBaseUrl,
     clientId: 'ident-cli',
     scopes: ['profile', 'vault.read', 'vault.write', 'vault.decrypt'],
     passwordProvider,
@@ -108,7 +112,7 @@ export const exec = async (context) => {
     case 'get': {
       if (!path) {
         console.error(
-          `Usage: ${context.personality} fragment get PATH [--subject=email:user@domain.com] [--timeout=30000] [--no-retry]`
+          `Usage: ${context.personality} fragment get PATH [--subject=email:user@domain.com] [--timeout=30000] [--no-retry] [--api-url=URL]`
         );
         process.exit(1);
       }
@@ -202,7 +206,7 @@ export const exec = async (context) => {
     case 'put': {
       if (!path) {
         console.error(
-          `Usage: ${context.personality} fragment put PATH [VALUE] [--timeout=30000] [--no-retry]`
+          `Usage: ${context.personality} fragment put PATH [VALUE] [--timeout=30000] [--no-retry] [--api-url=URL]`
         );
         process.exit(1);
       }
@@ -315,7 +319,7 @@ export const exec = async (context) => {
     case 'delete': {
       if (!path) {
         console.error(
-          `Usage: ${context.personality} fragment delete PATH [--timeout=30000] [--no-retry]`
+          `Usage: ${context.personality} fragment delete PATH [--timeout=30000] [--no-retry] [--api-url=URL]`
         );
         process.exit(1);
       }
@@ -350,20 +354,21 @@ export const exec = async (context) => {
     default: {
       console.error('Usage:');
       console.error(
-        `  ${context.personality} fragment get PATH [--subject=email:user@domain.com] [--timeout=30000] [--no-retry]`
+        `  ${context.personality} fragment get PATH [--subject=email:user@domain.com] [--timeout=30000] [--no-retry] [--api-url=URL]`
       );
       console.error(
-        `  ${context.personality} fragment put PATH [VALUE] [--timeout=30000] [--no-retry]`
+        `  ${context.personality} fragment put PATH [VALUE] [--timeout=30000] [--no-retry] [--api-url=URL]`
       );
       console.error(
-        `  ${context.personality} fragment list [PREFIX] [--timeout=30000] [--no-retry]`
+        `  ${context.personality} fragment list [PREFIX] [--timeout=30000] [--no-retry] [--api-url=URL]`
       );
-      console.error(`  ${context.personality} fragment delete PATH [--timeout=30000] [--no-retry]`);
+      console.error(`  ${context.personality} fragment delete PATH [--timeout=30000] [--no-retry] [--api-url=URL]`);
       console.error('');
       console.error('Flags:');
       console.error('  --subject   Subject for accessing public fragments (get command only)');
       console.error('  --timeout   API timeout in milliseconds (default: 30000)');
       console.error('  --no-retry  Disable automatic retries on network errors');
+      console.error('  --api-url   API base URL (default: config or https://www.ident.agency)');
       console.error('  --debug     Enable debug output');
       process.exit(1);
     }

@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import prompts from 'prompts';
 import { IdentClient } from '../../../ident-agency-sdk/lib-js/client.js';
+import { resolveApiBaseUrl } from '../lib/api-url.js';
 
 export const description = 'Get current user profile and session information';
 
@@ -49,9 +50,12 @@ export const exec = async (context) => {
       },
     };
 
+    // Resolve API base URL with fallback logic: flag -> config -> production default
+    const apiBaseUrl = resolveApiBaseUrl(context.flags.apiUrl, context.flags.debug);
+
     // Create SDK client instance
     const client = IdentClient.create({
-      apiBaseUrl: 'http://localhost:5173', // Development server
+      apiBaseUrl,
       clientId: 'ident-cli',
       scopes: ['profile', 'vault.read', 'vault.write', 'vault.decrypt'],
       passwordProvider,
