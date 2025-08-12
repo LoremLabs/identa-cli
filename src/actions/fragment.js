@@ -16,6 +16,7 @@ export const exec = async (context) => {
   // Create password provider for keychain operations
   const passwordProvider = {
     async getPassword(promptText) {
+      // First password entry
       const response = await prompts({
         type: 'password',
         name: 'password',
@@ -25,6 +26,20 @@ export const exec = async (context) => {
 
       if (!response.password) {
         throw new Error('Password is required for keychain operations');
+      }
+
+      // Confirmation - only if this looks like initial setup (not unlock)
+      if (promptText.toLowerCase().includes('create') || promptText.toLowerCase().includes('new')) {
+        const confirmResponse = await prompts({
+          type: 'password',
+          name: 'password',
+          message: 'Confirm password:',
+          validate: value => value === response.password ? true : 'Passwords do not match'
+        });
+        
+        if (!confirmResponse.password) {
+          throw new Error('Password confirmation is required');
+        }
       }
 
       return response.password;

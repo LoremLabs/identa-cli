@@ -11,6 +11,7 @@ Usage:
 
 Flags:
   --scope    Custom scopes to request (space-separated)
+  --timeout  Authentication timeout in seconds (default: 120)
   --debug    Enable debug output
 
 Description:
@@ -25,6 +26,9 @@ Examples:
   
   # Login with custom scopes
   $ identa login --scope "vault.read timeline"
+  
+  # Login with custom timeout (60 seconds)
+  $ identa login --timeout 60
   
   # Login with debug information
   $ identa login --debug
@@ -48,11 +52,26 @@ export const exec = async (context) => {
       }
     }
 
+    // Parse timeout from --timeout flag (in seconds)
+    let timeoutMs;
+    if (context.flags.timeout) {
+      const timeoutSeconds = parseInt(context.flags.timeout, 10);
+      if (isNaN(timeoutSeconds) || timeoutSeconds <= 0) {
+        console.error(chalk.red('❌ Invalid timeout value. Must be a positive number in seconds.'));
+        process.exit(1);
+      }
+      timeoutMs = timeoutSeconds * 1000;
+      if (context.flags.debug) {
+        console.log(chalk.blue(`🔧 Custom timeout: ${timeoutSeconds} seconds`));
+      }
+    }
+
     // Create password provider for keychain setup
     const passwordProvider = {
       async getPassword(promptText) {
         console.log(chalk.blue('🔐 Keychain setup required'));
         
+        // First password entry
         const response = await prompts({
           type: 'password',
           name: 'password',
@@ -62,6 +81,20 @@ export const exec = async (context) => {
         
         if (!response.password) {
           throw new Error('Password is required for keychain setup');
+        }
+        
+        // Confirmation - only if this looks like initial setup (not unlock)
+        if (promptText.toLowerCase().includes('create') || promptText.toLowerCase().includes('new')) {
+          const confirmResponse = await prompts({
+            type: 'password',
+            name: 'password',
+            message: 'Confirm password:',
+            validate: value => value === response.password ? true : 'Passwords do not match'
+          });
+          
+          if (!confirmResponse.password) {
+            throw new Error('Password confirmation is required');
+          }
         }
         
         return response.password;
@@ -95,7 +128,10 @@ export const exec = async (context) => {
     }
 
     console.log(chalk.white('🌐 Starting OAuth2/PKCE authentication...'));
-    await client.ensureAuthenticated(scopesToRequest);
+    if (timeoutMs && context.flags.debug) {
+      console.log(chalk.blue(`🔧 Authentication timeout: ${timeoutMs / 1000} seconds`));
+    }
+    await client.ensureAuthenticated(scopesToRequest, timeoutMs);
 
     // Get current session info
     const session = client.getSession();

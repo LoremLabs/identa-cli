@@ -13,8 +13,7 @@ import path from 'path';
 const __dirname = new URL('.', import.meta.url).pathname;
 
 const pkgJson = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json')));
-let personality = pkgJson.name || 'ident';
-personality = personality.replace('-cli', '');
+let personality = 'identa'; // Use the actual binary name instead of deriving from package name
 
 // load environment variables
 const paths = envPaths(personality);
@@ -46,7 +45,7 @@ process.emit = function (name, data) {
   return originalEmit.apply(process, arguments);
 };
 
-export async function getHelpText(personality = 'ident-cli') {
+export async function getHelpText(personality = 'identa') {
   const actions = await loadActions();
 
   const commandList = Object.entries(actions)

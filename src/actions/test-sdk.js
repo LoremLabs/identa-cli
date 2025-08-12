@@ -27,6 +27,7 @@ export const exec = async (context) => {
           return 'automated-test-password-123';
         }
         
+        // First password entry
         const response = await prompts({
           type: 'password',
           name: 'password',
@@ -36,6 +37,20 @@ export const exec = async (context) => {
         
         if (!response.password) {
           throw new Error('Password is required');
+        }
+        
+        // Confirmation - only if this looks like initial setup (not unlock)
+        if (promptText.toLowerCase().includes('create') || promptText.toLowerCase().includes('new')) {
+          const confirmResponse = await prompts({
+            type: 'password',
+            name: 'password',
+            message: 'Confirm password:',
+            validate: value => value === response.password ? true : 'Passwords do not match'
+          });
+          
+          if (!confirmResponse.password) {
+            throw new Error('Password confirmation is required');
+          }
         }
         
         return response.password;
