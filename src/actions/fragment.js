@@ -34,9 +34,9 @@ export const exec = async (context) => {
           type: 'password',
           name: 'password',
           message: 'Confirm password:',
-          validate: value => value === response.password ? true : 'Passwords do not match'
+          validate: (value) => (value === response.password ? true : 'Passwords do not match'),
         });
-        
+
         if (!confirmResponse.password) {
           throw new Error('Password confirmation is required');
         }
@@ -45,6 +45,27 @@ export const exec = async (context) => {
       return response.password;
     },
   };
+
+  // Parse timeout from --timeout flag (in milliseconds)
+  let timeoutMs;
+  if (context.flags.timeout) {
+    timeoutMs = parseInt(context.flags.timeout, 10);
+    if (isNaN(timeoutMs) || timeoutMs <= 0) {
+      console.error(
+        chalk.red('❌ Invalid timeout value. Must be a positive number in milliseconds.')
+      );
+      process.exit(1);
+    }
+    if (context.flags.debug) {
+      console.log(chalk.blue(`🔧 API timeout: ${timeoutMs}ms`));
+    }
+  }
+
+  // Parse --no-retry flag (meow converts --no-retry to retry: false)
+  const disableRetries = context.flags.retry === false;
+  if (disableRetries && context.flags.debug) {
+    console.log(chalk.blue('🔧 API retries disabled'));
+  }
 
   // Create SDK client instance
   const client = IdentClient.create({
@@ -55,9 +76,25 @@ export const exec = async (context) => {
     debug: context.flags.debug,
   });
 
+  // Configure timeout and retry settings if provided
+  const retryOptions = {};
+
+  if (timeoutMs) {
+    retryOptions.timeout = timeoutMs;
+    retryOptions.overallTimeout = Math.max(timeoutMs * 3, 60000); // At least 60 seconds for overall timeout
+  }
+
+  if (disableRetries) {
+    retryOptions.maxRetries = 0;
+  }
+
+  if (Object.keys(retryOptions).length > 0) {
+    client.setRetryOptions(retryOptions);
+  }
+
   try {
     await client.ready();
-    
+
     // For write operations, always require authentication (with current user scopes)
     if (subcommand !== 'get' && subcommand !== 'list') {
       await client.ensureAuthenticated();
@@ -70,14 +107,16 @@ export const exec = async (context) => {
   switch (subcommand) {
     case 'get': {
       if (!path) {
-        console.error(`Usage: ${context.personality} fragment get PATH [--subject=email:user@domain.com]`);
+        console.error(
+          `Usage: ${context.personality} fragment get PATH [--subject=email:user@domain.com] [--timeout=30000] [--no-retry]`
+        );
         process.exit(1);
       }
 
       try {
         let subjectToUse = context.flags.subject;
         let usePublicAccess = false;
-        
+
         // If no subject provided, try to determine what to do
         if (!subjectToUse) {
           // Check if we're authenticated
@@ -88,13 +127,21 @@ export const exec = async (context) => {
               const lastUser = config.get('lastUser');
               console.log(chalk.yellow('⚠️  Not authenticated'));
               console.log(chalk.white(`   Try running: ${context.personality} login`));
-              console.log(chalk.gray(`   Or specify subject for public access: ${context.personality} fragment get ${path} --subject="${lastUser}"`));
+              console.log(
+                chalk.gray(
+                  `   Or specify subject for public access: ${context.personality} fragment get ${path} --subject="${lastUser}"`
+                )
+              );
               process.exit(0);
             } else {
               // No last user - just suggest login or subject
               console.log(chalk.yellow('⚠️  Not authenticated'));
               console.log(chalk.white(`   Try running: ${context.personality} login`));
-              console.log(chalk.gray(`   Or specify subject for public access: ${context.personality} fragment get ${path} --subject="email:user@domain.com"`));
+              console.log(
+                chalk.gray(
+                  `   Or specify subject for public access: ${context.personality} fragment get ${path} --subject="email:user@domain.com"`
+                )
+              );
               process.exit(0);
             }
           }
@@ -103,7 +150,7 @@ export const exec = async (context) => {
           // Subject provided - use public access
           usePublicAccess = true;
         }
-        
+
         if (usePublicAccess) {
           console.log(chalk.white(`🔍 Getting public fragment: ${path}`));
           console.log(chalk.gray(`   From subject: ${subjectToUse}`));
@@ -154,7 +201,9 @@ export const exec = async (context) => {
 
     case 'put': {
       if (!path) {
-        console.error(`Usage: ${context.personality} fragment put PATH [VALUE]`);
+        console.error(
+          `Usage: ${context.personality} fragment put PATH [VALUE] [--timeout=30000] [--no-retry]`
+        );
         process.exit(1);
       }
 
@@ -265,7 +314,9 @@ export const exec = async (context) => {
 
     case 'delete': {
       if (!path) {
-        console.error(`Usage: ${context.personality} fragment delete PATH`);
+        console.error(
+          `Usage: ${context.personality} fragment delete PATH [--timeout=30000] [--no-retry]`
+        );
         process.exit(1);
       }
 
@@ -298,10 +349,22 @@ export const exec = async (context) => {
 
     default: {
       console.error('Usage:');
-      console.error(`  ${context.personality} fragment get PATH`);
-      console.error(`  ${context.personality} fragment put PATH [VALUE]`);
-      console.error(`  ${context.personality} fragment list [PREFIX]`);
-      console.error(`  ${context.personality} fragment delete PATH`);
+      console.error(
+        `  ${context.personality} fragment get PATH [--subject=email:user@domain.com] [--timeout=30000] [--no-retry]`
+      );
+      console.error(
+        `  ${context.personality} fragment put PATH [VALUE] [--timeout=30000] [--no-retry]`
+      );
+      console.error(
+        `  ${context.personality} fragment list [PREFIX] [--timeout=30000] [--no-retry]`
+      );
+      console.error(`  ${context.personality} fragment delete PATH [--timeout=30000] [--no-retry]`);
+      console.error('');
+      console.error('Flags:');
+      console.error('  --subject   Subject for accessing public fragments (get command only)');
+      console.error('  --timeout   API timeout in milliseconds (default: 30000)');
+      console.error('  --no-retry  Disable automatic retries on network errors');
+      console.error('  --debug     Enable debug output');
       process.exit(1);
     }
   }

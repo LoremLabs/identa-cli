@@ -46,7 +46,7 @@ export const exec = async (context) => {
     let requestedScopes;
     if (context.flags.scope) {
       // Split space-separated scopes
-      requestedScopes = context.flags.scope.split(' ').filter(s => s.trim());
+      requestedScopes = context.flags.scope.split(' ').filter((s) => s.trim());
       if (context.flags.debug) {
         console.log(chalk.blue(`🔧 Custom scopes requested: ${requestedScopes.join(', ')}`));
       }
@@ -70,43 +70,47 @@ export const exec = async (context) => {
     const passwordProvider = {
       async getPassword(promptText) {
         console.log(chalk.blue('🔐 Keychain setup required'));
-        
+
         // First password entry
         const response = await prompts({
           type: 'password',
           name: 'password',
           message: promptText,
-          validate: value => value.length >= 8 ? true : 'Password must be at least 8 characters'
+          validate: (value) =>
+            value.length >= 8 ? true : 'Password must be at least 8 characters',
         });
-        
+
         if (!response.password) {
           throw new Error('Password is required for keychain setup');
         }
-        
+
         // Confirmation - only if this looks like initial setup (not unlock)
-        if (promptText.toLowerCase().includes('create') || promptText.toLowerCase().includes('new')) {
+        if (
+          promptText.toLowerCase().includes('create') ||
+          promptText.toLowerCase().includes('new')
+        ) {
           const confirmResponse = await prompts({
             type: 'password',
             name: 'password',
             message: 'Confirm password:',
-            validate: value => value === response.password ? true : 'Passwords do not match'
+            validate: (value) => (value === response.password ? true : 'Passwords do not match'),
           });
-          
+
           if (!confirmResponse.password) {
             throw new Error('Password confirmation is required');
           }
         }
-        
+
         return response.password;
-      }
+      },
     };
 
-    // Create SDK client instance  
+    // Create SDK client instance
     const client = IdentClient.create({
       apiBaseUrl: 'http://localhost:5173', // Development server
       clientId: 'ident-cli', // CLI client ID
       scopes: ['profile', 'vault.read', 'vault.write', 'vault.decrypt'],
-      passwordProvider
+      passwordProvider,
     });
 
     console.log(chalk.white('🔐 Initializing Ident SDK...'));
@@ -140,7 +144,7 @@ export const exec = async (context) => {
       console.log(chalk.white(`   Subject: ${session.subject.id}`));
       console.log(chalk.white(`   Subject Hash: ${session.subject.hash}`));
       console.log(chalk.white(`   Scopes: ${session.scopes.join(', ')}`));
-      
+
       // Store the last logged-in user for future reference
       config.set('lastUser', session.subject.id);
       if (context.flags.debug) {
@@ -149,7 +153,6 @@ export const exec = async (context) => {
     } else {
       console.log(chalk.yellow('⚠️  Authentication completed but no session found'));
     }
-
   } catch (error) {
     console.error(chalk.red('❌ Login failed:'), error.message);
     if (context.flags.debug) {

@@ -17,7 +17,7 @@ export const exec = async (context) => {
 
     // Step 1: Initialize SDK
     console.log(chalk.white('1️⃣  Initializing SDK...'));
-    
+
     // Create password provider for CLI
     const passwordProvider = {
       async getPassword(promptText) {
@@ -26,42 +26,46 @@ export const exec = async (context) => {
           console.log(chalk.gray('   Using automated test password'));
           return 'automated-test-password-123';
         }
-        
+
         // First password entry
         const response = await prompts({
           type: 'password',
           name: 'password',
           message: promptText,
-          validate: value => value.length >= 8 ? true : 'Password must be at least 8 characters'
+          validate: (value) =>
+            value.length >= 8 ? true : 'Password must be at least 8 characters',
         });
-        
+
         if (!response.password) {
           throw new Error('Password is required');
         }
-        
+
         // Confirmation - only if this looks like initial setup (not unlock)
-        if (promptText.toLowerCase().includes('create') || promptText.toLowerCase().includes('new')) {
+        if (
+          promptText.toLowerCase().includes('create') ||
+          promptText.toLowerCase().includes('new')
+        ) {
           const confirmResponse = await prompts({
             type: 'password',
             name: 'password',
             message: 'Confirm password:',
-            validate: value => value === response.password ? true : 'Passwords do not match'
+            validate: (value) => (value === response.password ? true : 'Passwords do not match'),
           });
-          
+
           if (!confirmResponse.password) {
             throw new Error('Password confirmation is required');
           }
         }
-        
+
         return response.password;
-      }
+      },
     };
-    
+
     const client = IdentClient.create({
       apiBaseUrl: 'http://localhost:5173', // Development server
       clientId: 'ident-cli',
       scopes: ['profile', 'vault.read', 'vault.write', 'vault.decrypt'],
-      passwordProvider
+      passwordProvider,
     });
 
     await client.ready();
@@ -85,8 +89,12 @@ export const exec = async (context) => {
     // Step 3: Store test fragments
     const testFragments = [
       { path: 'test/sdk/public-string', data: 'Hello from CLI!', visibility: 'public' },
-      { path: 'test/sdk/private-object', data: { message: 'Secret data', timestamp: Date.now() }, visibility: 'private' },
-      { path: 'test/sdk/public-number', data: 42, visibility: 'public' }
+      {
+        path: 'test/sdk/private-object',
+        data: { message: 'Secret data', timestamp: Date.now() },
+        visibility: 'private',
+      },
+      { path: 'test/sdk/public-number', data: 42, visibility: 'public' },
     ];
 
     console.log(chalk.white('3️⃣  Storing test fragments...'));
@@ -102,7 +110,7 @@ export const exec = async (context) => {
     for (const fragment of testFragments) {
       console.log(chalk.white(`   🔍 Getting: ${fragment.path}`));
       const retrieved = await client.get(fragment.path);
-      
+
       if (JSON.stringify(retrieved) === JSON.stringify(fragment.data)) {
         console.log(chalk.green(`   ✅ Match: ${fragment.path}`));
       } else {
@@ -118,7 +126,9 @@ export const exec = async (context) => {
     const fragments = await client.list('test/sdk/');
     console.log(chalk.green(`✅ Found ${fragments.length} fragment(s):`));
     fragments.forEach((fragment, index) => {
-      console.log(chalk.white(`   ${index + 1}. ${fragment.path} (${fragment.visibility || 'unknown'})`));
+      console.log(
+        chalk.white(`   ${index + 1}. ${fragment.path} (${fragment.visibility || 'unknown'})`)
+      );
     });
     console.log();
 
@@ -133,7 +143,6 @@ export const exec = async (context) => {
 
     console.log(chalk.green('🎉 End-to-end test completed successfully!'));
     console.log(chalk.white('All SDK functionality is working correctly.'));
-
   } catch (error) {
     console.error(chalk.red('❌ Test failed:'), error.message);
     if (context.flags.debug) {

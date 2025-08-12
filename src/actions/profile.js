@@ -20,29 +20,33 @@ export const exec = async (context) => {
           type: 'password',
           name: 'password',
           message: promptText,
-          validate: value => value.length >= 8 ? true : 'Password must be at least 8 characters'
+          validate: (value) =>
+            value.length >= 8 ? true : 'Password must be at least 8 characters',
         });
-        
+
         if (!response.password) {
           throw new Error('Password is required for keychain operations');
         }
-        
+
         // Confirmation - only if this looks like initial setup (not unlock)
-        if (promptText.toLowerCase().includes('create') || promptText.toLowerCase().includes('new')) {
+        if (
+          promptText.toLowerCase().includes('create') ||
+          promptText.toLowerCase().includes('new')
+        ) {
           const confirmResponse = await prompts({
             type: 'password',
             name: 'password',
             message: 'Confirm password:',
-            validate: value => value === response.password ? true : 'Passwords do not match'
+            validate: (value) => (value === response.password ? true : 'Passwords do not match'),
           });
-          
+
           if (!confirmResponse.password) {
             throw new Error('Password confirmation is required');
           }
         }
-        
+
         return response.password;
-      }
+      },
     };
 
     // Create SDK client instance
@@ -50,7 +54,7 @@ export const exec = async (context) => {
       apiBaseUrl: 'http://localhost:5173', // Development server
       clientId: 'ident-cli',
       scopes: ['profile', 'vault.read', 'vault.write', 'vault.decrypt'],
-      passwordProvider
+      passwordProvider,
     });
 
     await client.ready();
@@ -69,18 +73,21 @@ export const exec = async (context) => {
     console.log(chalk.white(`   Subject Hash: ${session.subject.hash}`));
     console.log(chalk.white(`   Scopes: ${session.scopes.join(', ')}`));
     console.log(chalk.white(`   Created: ${new Date(session.createdAt).toISOString()}`));
-    
+
     if (session.expiresAt) {
       const isExpired = Date.now() >= session.expiresAt;
       const expiry = new Date(session.expiresAt).toISOString();
-      console.log(chalk.white(`   Expires: ${expiry} ${isExpired ? chalk.red('(EXPIRED)') : chalk.green('(Valid)')}`));
+      console.log(
+        chalk.white(
+          `   Expires: ${expiry} ${isExpired ? chalk.red('(EXPIRED)') : chalk.green('(Valid)')}`
+        )
+      );
     } else {
       console.log(chalk.white(`   Expires: Never`));
     }
 
     console.log(chalk.white(`   Has Access Token: ${session.accessToken ? 'Yes' : 'No'}`));
     console.log(chalk.white(`   Has Refresh Token: ${session.refreshToken ? 'Yes' : 'No'}`));
-
   } catch (error) {
     console.error(chalk.red('❌ Failed to get profile:'), error.message);
     if (context.flags.debug) {

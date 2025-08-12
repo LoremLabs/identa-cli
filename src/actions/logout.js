@@ -66,7 +66,7 @@ export const exec = async (context) => {
         type: 'confirm',
         name: 'confirm',
         message: 'Are you sure you want to logout?',
-        initial: false
+        initial: false,
       });
 
       if (!response.confirm) {
@@ -77,10 +77,10 @@ export const exec = async (context) => {
 
     // Clear the session
     console.log(chalk.white('🚪 Clearing session...'));
-    
+
     // Access the session manager directly to clear session
     await client.sessionManager.clearSession();
-    
+
     // Also clear keychain cache if it exists
     if (client.keychainCache) {
       client.keychainCache = null;
@@ -104,7 +104,6 @@ export const exec = async (context) => {
     console.log(chalk.green('✅ Successfully logged out!'));
     console.log(chalk.white('   All session data has been cleared from local storage'));
     console.log(chalk.gray('   Use "identa login" to authenticate again'));
-
   } catch (error) {
     console.error(chalk.red('❌ Logout failed:'), error.message);
     if (context.flags.debug) {
