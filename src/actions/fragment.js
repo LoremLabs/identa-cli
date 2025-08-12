@@ -1,6 +1,7 @@
 import { IdentClient } from '../../../ident-agency-sdk/lib-js/index.js';
 import chalk from 'chalk';
 import prompts from 'prompts';
+import config from '../lib/config.js';
 
 export const description = 'Manage fragments (get, put, list, delete)';
 
@@ -41,37 +42,81 @@ export const exec = async (context) => {
 
   try {
     await client.ready();
-    await client.ensureAuthenticated(['vault.read', 'vault.write', 'vault.decrypt']);
+    
+    // For write operations, always require authentication (with current user scopes)
+    if (subcommand !== 'get' && subcommand !== 'list') {
+      await client.ensureAuthenticated();
+    }
   } catch (error) {
-    console.error(chalk.red('❌ Authentication failed:'), error.message);
-    console.log(chalk.white(`   Try running: ${context.personality} login`));
+    console.error(chalk.red('❌ Failed to initialize:'), error.message);
     process.exit(1);
   }
 
   switch (subcommand) {
     case 'get': {
       if (!path) {
-        console.error(`Usage: ${context.personality} fragment get PATH`);
+        console.error(`Usage: ${context.personality} fragment get PATH [--subject=email:user@domain.com]`);
         process.exit(1);
       }
 
       try {
-        console.log(chalk.white(`🔍 Getting fragment: ${path}`));
+        let subjectToUse = context.flags.subject;
+        let usePublicAccess = false;
+        
+        // If no subject provided, try to determine what to do
+        if (!subjectToUse) {
+          // Check if we're authenticated
+          const session = client.getSession();
+          if (!session) {
+            // Not authenticated - check if we have a last user to suggest
+            if (config.has('lastUser')) {
+              const lastUser = config.get('lastUser');
+              console.log(chalk.yellow('⚠️  Not authenticated'));
+              console.log(chalk.white(`   Try running: ${context.personality} login`));
+              console.log(chalk.gray(`   Or specify subject for public access: ${context.personality} fragment get ${path} --subject="${lastUser}"`));
+              process.exit(0);
+            } else {
+              // No last user - just suggest login or subject
+              console.log(chalk.yellow('⚠️  Not authenticated'));
+              console.log(chalk.white(`   Try running: ${context.personality} login`));
+              console.log(chalk.gray(`   Or specify subject for public access: ${context.personality} fragment get ${path} --subject="email:user@domain.com"`));
+              process.exit(0);
+            }
+          }
+          // If we reach here, we're authenticated and can proceed with normal access
+        } else {
+          // Subject provided - use public access
+          usePublicAccess = true;
+        }
+        
+        if (usePublicAccess) {
+          console.log(chalk.white(`🔍 Getting public fragment: ${path}`));
+          console.log(chalk.gray(`   From subject: ${subjectToUse}`));
+        } else {
+          console.log(chalk.white(`🔍 Getting fragment: ${path}`));
+        }
 
         if (context.flags.debug) {
-          // In debug mode, show raw fragment envelope + decrypted content
           console.log(chalk.cyan('🐛 DEBUG MODE: Fetching raw fragment envelope...'));
-
-          const rawFragment = await client.getRaw(path);
-          if (rawFragment) {
-            console.log(chalk.magenta('📦 RAW FRAGMENT ENVELOPE:'));
-            console.log(chalk.gray('='.repeat(50)));
-            console.log(JSON.stringify(rawFragment, null, 2));
-            console.log(chalk.gray('='.repeat(50)));
+          if (usePublicAccess) {
+            console.log(chalk.yellow('   (Raw envelope not available in public access mode)'));
+          } else {
+            const rawFragment = await client.getRaw(path);
+            if (rawFragment) {
+              console.log(chalk.magenta('📦 RAW FRAGMENT ENVELOPE:'));
+              console.log(chalk.gray('='.repeat(50)));
+              console.log(JSON.stringify(rawFragment, null, 2));
+              console.log(chalk.gray('='.repeat(50)));
+            }
           }
         }
 
-        const fragment = await client.get(path);
+        let fragment;
+        if (usePublicAccess) {
+          fragment = await client.getPublic(path, subjectToUse);
+        } else {
+          fragment = await client.get(path);
+        }
 
         if (fragment) {
           console.log(chalk.green('✅ Fragment found:'));
