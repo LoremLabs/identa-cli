@@ -1,0 +1,65 @@
+{
+  "name": "ident-agency-cli",
+  "version": "0.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "format": "prettier --write \"**/*.{js,ts,tsx,md}\"",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "type": "module",
+  "private": true,
+  "bin": {
+    "identa": "src/ident-agency-cli.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@google-cloud/secret-manager": "6.0.1",
+    "@google-cloud/storage": "7.16.0",
+    "@iarna/toml": "2.2.5",
+    "@noble/hashes": "1.7.2",
+    "assert": "2.1.0",
+    "chalk": "5.4.1",
+    "cli-spinners": "3.2.0",
+    "conf": "13.1.0",
+    "crypto": "1.0.1",
+    "dotenv": "16.3.2",
+    "elliptic": "6.6.1",
+    "get-stdin": "9.0.0",
+    "global": "link:../../../../Library/pnpm/global/5/node_modules/global",
+    "google-auth-library": "9.15.1",
+    "json-colorizer": "2.2.2",
+    "keytar": "^7.9.0",
+    "meow": "12.0.1",
+    "open": "9.1.0",
+    "ora": "8.2.0",
+    "path": "0.12.7",
+    "prompts": "2.4.2",
+    "ripple-address-codec": "5.0.0",
+    "ripple-binary-codec": "2.3.0",
+    "ripple-keypairs": "2.0.0",
+    "toml": "3.0.0",
+    "xrpl": "4.2.5",
+    "yaml": "2.7.1"
+  },
+  "devDependencies": {
+    "babel-eslint": "10.1.0",
+    "env-paths": "3.0.0",
+    "eslint": "8.40.0",
+    "eslint-config-prettier": "8.8.0",
+    "eslint-plugin-prettier": "4.2.1",
+    "prettier": "2.8.8",
+    "tsx": "^4.20.3"
+  },
+  "packageManager": "pnpm@10.6.3+sha512.bb45e34d50a9a76e858a95837301bfb6bd6d35aea2c5d52094fa497a467c43f5c440103ce2511e9e0a2f89c3d6071baac3358fc68ac6fb75e2ceb3d2736065e6",
+  "pnpm": {
+    "overrides": {
+      "global": "link:../../../../Library/pnpm/global/5/node_modules/global"
+    }
+  }
+}
