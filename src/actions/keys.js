@@ -41,6 +41,11 @@ export const exec = async (context) => {
       await deviceCommand(context);
       break;
     }
+
+    case 'recovery': {
+      await recoveryCommand(context);
+      break;
+    }
     
     default: {
       console.error('Usage:');
@@ -49,13 +54,15 @@ export const exec = async (context) => {
       console.error(`  ${context.personality} keys remove METHOD [KEY_ID] [--api-url=URL] [--debug] [--yes]`);
       console.error(`  ${context.personality} keys test [METHOD] [KEY_ID] [--api-url=URL] [--debug]`);
       console.error(`  ${context.personality} keys device [--api-url=URL] [--debug] [--yes]`);
+      console.error(`  ${context.personality} keys recovery [--words=24] [--api-url=URL] [--debug]`);
       console.error('');
       console.error('Commands:');
       console.error('  register   Register a new authentication key (passkey via browser)');
       console.error('  list       List available authentication keys in keychain');
       console.error('  remove     Remove an authentication key from keychain');
-      console.error('  test       Test an authentication key (password and device in CLI)');
+      console.error('  test       Test an authentication key (password, device, and recovery in CLI)');
       console.error('  device     Generate and register a device-specific unlock key');
+      console.error('  recovery   Generate or import a BIP-39 mnemonic for recovery');
       console.error('');
       console.error('Global Flags:');
       console.error('  --api-url  API base URL (default: config or https://www.ident.agency)');
@@ -176,7 +183,10 @@ async function listCommand(context) {
       
       console.log(chalk.blue('🔐 Multiple unlock methods available. Choose one:'));
       methods.forEach((method, index) => {
-        console.log(chalk.white(`   ${index + 1}. ${method.displayName}`));
+        const displayText = method.detail 
+          ? `${method.displayName} ${chalk.gray(`(${method.detail})`)}`
+          : method.displayName;
+        console.log(chalk.white(`   ${index + 1}. ${displayText}`));
       });
       
       prompts({
@@ -342,7 +352,10 @@ async function removeCommand(context) {
       
       console.log(chalk.blue('🔐 Multiple unlock methods available. Choose one:'));
       methods.forEach((method, index) => {
-        console.log(chalk.white(`   ${index + 1}. ${method.displayName}`));
+        const displayText = method.detail 
+          ? `${method.displayName} ${chalk.gray(`(${method.detail})`)}`
+          : method.displayName;
+        console.log(chalk.white(`   ${index + 1}. ${displayText}`));
       });
       
       prompts({
@@ -505,7 +518,10 @@ async function testCommand(context) {
       
       console.log(chalk.blue('🔐 Multiple unlock methods available. Choose one:'));
       methods.forEach((method, index) => {
-        console.log(chalk.white(`   ${index + 1}. ${method.displayName}`));
+        const displayText = method.detail 
+          ? `${method.displayName} ${chalk.gray(`(${method.detail})`)}`
+          : method.displayName;
+        console.log(chalk.white(`   ${index + 1}. ${displayText}`));
       });
       
       prompts({
@@ -539,12 +555,12 @@ async function testCommand(context) {
 
       // Filter to methods that are testable in CLI
       const testableMethods = detailedMethods.filter(m => 
-        m.method === 'password' || m.method === 'device'
+        m.method === 'password' || m.method === 'device' || m.method === 'recovery'
       );
 
       if (testableMethods.length === 0) {
         console.log(chalk.yellow('⚠️  No CLI-testable unlock methods found'));
-        console.log(chalk.white('   Only password and device methods can be tested in CLI'));
+        console.log(chalk.white('   Only password, device, and recovery methods can be tested in CLI'));
         console.log(chalk.white('   Use the web interface to test passkey methods'));
         process.exit(1);
       }
@@ -554,7 +570,8 @@ async function testCommand(context) {
       // Create selection options
       const choices = testableMethods.map((method, index) => {
         const icon = method.method === 'password' ? '🔒' : 
-                    method.method === 'device' ? '💻' : '❓';
+                    method.method === 'device' ? '💻' : 
+                    method.method === 'recovery' ? '🔄' : '❓';
         
         let displayName = `${icon} ${method.method}`;
         if (method.method === 'device' && method.device?.description) {
@@ -596,30 +613,41 @@ async function testCommand(context) {
       process.exit(1);
     }
 
-    if (method !== 'password' && method !== 'device') {
+    if (method !== 'password' && method !== 'device' && method !== 'recovery') {
       console.error(chalk.red(`❌ Testing method '${method}' is not supported in CLI`));
-      console.error(chalk.white('   Only password and device testing is supported in CLI'));
+      console.error(chalk.white('   Only password, device, and recovery testing is supported in CLI'));
       process.exit(1);
     }
 
     // Get available methods to find the target
     const detailedMethods = await client.getDetailedUnlockMethods();
-    let targetMethod = detailedMethods.find(m => m.method === method && (!keyId || m.keyId === keyId));
+    let targetMethod;
     
-    if (!targetMethod && keyId) {
-      targetMethod = detailedMethods.find(m => m.keyId === keyId);
-    }
-    
-    if (!targetMethod) {
+    // If keyId is specified, find by keyId first
+    if (keyId) {
+      targetMethod = detailedMethods.find(m => m.keyId === keyId) || 
+                     detailedMethods.find(m => m.method === method && m.keyId === keyId);
+    } else {
+      // No keyId specified - check for method matches
       const methodMatches = detailedMethods.filter(m => m.method === method);
       if (methodMatches.length === 1) {
         targetMethod = methodMatches[0];
       } else if (methodMatches.length > 1) {
-        console.error(chalk.red(`❌ Multiple ${method} methods found. Please specify KEY_ID:`));
-        methodMatches.forEach((m, index) => {
-          console.error(chalk.white(`   ${index + 1}. ${m.keyId}`));
-        });
-        process.exit(1);
+        if (method === 'recovery') {
+          // For recovery methods, test all of them
+          console.log(chalk.yellow(`💡 Found ${methodMatches.length} recovery methods - testing all of them:`));
+          for (const recoveryMethod of methodMatches) {
+            console.log(chalk.white(`\n🧪 Testing recovery method: ${recoveryMethod.keyId} (created ${new Date(recoveryMethod.createdAt).toLocaleString()})`));
+            await testRecoveryMethod(client, recoveryMethod, context);
+          }
+          return; // Exit after testing all recovery methods
+        } else {
+          console.error(chalk.red(`❌ Multiple ${method} methods found. Please specify KEY_ID:`));
+          methodMatches.forEach((m, index) => {
+            console.error(chalk.white(`   ${index + 1}. ${m.keyId}`));
+          });
+          process.exit(1);
+        }
       }
     }
 
@@ -659,7 +687,7 @@ async function testCommand(context) {
         }
         process.exit(1);
       }
-    } else {
+    } else if (method === 'password') {
       // For password, test the specific password method
       try {
         console.log(chalk.white('   Testing password unlock...'));
@@ -696,6 +724,12 @@ async function testCommand(context) {
         if (context.flags.debug) {
           console.error(error);
         }
+        process.exit(1);
+      }
+    } else if (method === 'recovery') {
+      // For recovery method, test the specific mnemonic
+      const success = await testRecoveryMethod(client, targetMethod, context);
+      if (!success) {
         process.exit(1);
       }
     }
@@ -804,7 +838,10 @@ async function deviceCommand(context) {
       
       console.log(chalk.blue('🔐 Multiple unlock methods available. Choose one:'));
       methods.forEach((method, index) => {
-        console.log(chalk.white(`   ${index + 1}. ${method.displayName}`));
+        const displayText = method.detail 
+          ? `${method.displayName} ${chalk.gray(`(${method.detail})`)}`
+          : method.displayName;
+        console.log(chalk.white(`   ${index + 1}. ${displayText}`));
       });
       
       prompts({
@@ -922,6 +959,320 @@ async function deviceCommand(context) {
 
   } catch (error) {
     console.error(chalk.red('❌ Device key generation failed:'), error.message);
+    if (context.flags.debug) {
+      console.error(error);
+    }
+    process.exit(1);
+  }
+}
+
+// Helper function to test a specific recovery method
+async function testRecoveryMethod(client, targetMethod, context) {
+  try {
+    console.log(chalk.white('   Testing recovery mnemonic unlock...'));
+    
+    // Load keychain to get the wrapped seeds
+    await client.ensureKeychainReady();
+    await client.cryptoManager?.ensureKeychainLoaded();
+    
+    if (!client.cryptoManager) {
+      throw new Error('Crypto manager not available');
+    }
+    
+    // Find the actual WrappedSeed by keyId
+    const wrappedSeed = client.cryptoManager.wrappedSeeds.find(ws => ws.keyId === targetMethod.keyId);
+    if (!wrappedSeed) {
+      throw new Error(`WrappedSeed not found for keyId: ${targetMethod.keyId}`);
+    }
+    
+    // If already unlocked, lock first to test properly
+    if (client.cryptoManager.isUnlocked) {
+      client.cryptoManager.lock();
+      console.log(chalk.white('   Locked keychain to test recovery unlock'));
+    }
+    
+    // Get the recovery mnemonic from user
+    const mnemonicResponse = await prompts({
+      type: 'text',
+      name: 'mnemonic',
+      message: 'Enter your recovery mnemonic (12-24 words):',
+      validate: (value) => {
+        const words = value.trim().split(/\s+/);
+        return words.length >= 12 && words.length <= 24 ? true : 'Mnemonic must be 12-24 words';
+      }
+    }, {
+      onCancel: () => {
+        console.log(chalk.yellow('\n⚠️  Test cancelled.'));
+        return false; // Continue with other tests
+      }
+    });
+
+    if (!mnemonicResponse.mnemonic) {
+      console.log(chalk.yellow('⚠️  No mnemonic provided, test cancelled'));
+      return false;
+    }
+    
+    // Test the specific recovery method by unlocking with it
+    await client.cryptoManager.unlockWithRecovery(mnemonicResponse.mnemonic.trim(), wrappedSeed);
+    console.log(chalk.green('✅ Recovery unlock method test successful'));
+    console.log(chalk.white('   Recovery mnemonic was correct and keychain unlocked'));
+    return true;
+  } catch (error) {
+    console.error(chalk.red('❌ Recovery unlock test failed:'), error.message);
+    if (context.flags.debug) {
+      console.error(error);
+    }
+    return false;
+  }
+}
+
+async function recoveryCommand(context) {
+  try {
+    // Create password provider for keychain operations
+    const passwordProvider = {
+      async getPassword(promptText) {
+        console.log(chalk.blue('🔐 Keychain password required'));
+
+        const response = await prompts({
+          type: 'password',
+          name: 'password',
+          message: promptText,
+          validate: (value) =>
+            value.length >= 8 ? true : 'Password must be at least 8 characters',
+        }, {
+          onCancel: () => {
+            console.log(chalk.yellow('\n⚠️  Operation cancelled.'));
+            process.exit(1);
+          }
+        });
+
+        if (!response.password) {
+          throw new Error('Password is required for keychain operations');
+        }
+
+        return response.password;
+      },
+      async getText(promptText) {
+        // Text input (not hidden like password)
+        const response = await prompts({
+          type: 'text',
+          name: 'text',
+          message: promptText,
+        }, {
+          onCancel: () => {
+            console.log(chalk.yellow('\n⚠️  Operation cancelled.'));
+            process.exit(1);
+          }
+        });
+
+        if (!response.text) {
+          throw new Error('Text input is required');
+        }
+
+        return response.text;
+      },
+    };
+
+    // Parse word count from flags (default to 24)
+    let wordCount = 24;
+    if (context.flags.words) {
+      const requestedWords = parseInt(context.flags.words, 10);
+      if ([12, 15, 18, 21, 24].includes(requestedWords)) {
+        wordCount = requestedWords;
+      } else {
+        console.error(chalk.red('❌ Invalid word count. Must be 12, 15, 18, 21, or 24'));
+        process.exit(1);
+      }
+    }
+
+    // Resolve API base URL with fallback logic: flag -> config -> production default
+    const apiBaseUrl = resolveApiBaseUrl(context.flags.apiUrl, context.flags.debug);
+
+    console.log(chalk.white('🔐 Initializing Ident SDK...'));
+    
+    // Create SDK client instance
+    const client = IdentClient.create({
+      apiBaseUrl,
+      clientId: 'ident-cli',
+      scopes: ['user', 'vault.read', 'vault.write', 'vault.decrypt'],
+      passwordProvider,
+      deviceKeyProvider: createDeviceKeyProvider(),
+      debug: context.flags.debug,
+    });
+
+    await client.ready();
+
+    // Add unlock method selection handler
+    client.on('unlock_method_selection', (data) => {
+      const { methods, resolve, reject } = data;
+      
+      console.log(chalk.blue('🔐 Multiple unlock methods available. Choose one:'));
+      methods.forEach((method, index) => {
+        const displayText = method.detail 
+          ? `${method.displayName} ${chalk.gray(`(${method.detail})`)}`
+          : method.displayName;
+        console.log(chalk.white(`   ${index + 1}. ${displayText}`));
+      });
+      
+      prompts({
+        type: 'number',
+        name: 'choice',
+        message: `Select unlock method (1-${methods.length}):`,
+        min: 1,
+        max: methods.length,
+        validate: (value) => {
+          if (!value || value < 1 || value > methods.length) {
+            return `Please enter a number between 1 and ${methods.length}`;
+          }
+          return true;
+        }
+      }, {
+        onCancel: () => {
+          console.log(chalk.yellow('\n⚠️  Operation cancelled.'));
+          process.exit(1);
+        }
+      }).then((response) => {
+        if (!response.choice) {
+          reject(new Error('No unlock method selected'));
+        } else {
+          const selectedMethod = methods[response.choice - 1];
+          console.log(chalk.white(`✅ Selected: ${selectedMethod.displayName}`));
+          resolve(selectedMethod.id);
+        }
+      }).catch((error) => {
+        reject(error);
+      });
+    });
+
+    // Check if authenticated
+    const session = client.getSession();
+    if (!session) {
+      console.log(chalk.yellow('⚠️  Not authenticated. Run login first.'));
+      console.log(chalk.white(`   ${context.personality} auth login`));
+      process.exit(1);
+    }
+
+    console.log(chalk.white('👤 Current session:'));
+    console.log(chalk.white(`   Subject: ${session.subject.id}`));
+    console.log(chalk.white(`   Word count: ${wordCount} words`));
+    console.log('');
+
+    let result;
+    
+    // Check if user wants to import an existing mnemonic
+    if (context.flags.import) {
+      console.log(chalk.blue('📥 Importing existing recovery mnemonic...'));
+      console.log(chalk.yellow('⚠️  This will add your existing mnemonic as a recovery method'));
+      console.log(chalk.white('   Make sure your mnemonic is from a trusted source'));
+      console.log('');
+
+      // Get the existing mnemonic from user
+      const mnemonicResponse = await prompts({
+        type: 'text',
+        name: 'mnemonic',
+        message: 'Enter your existing recovery mnemonic (12-24 words):',
+        validate: (value) => {
+          const words = value.trim().split(/\s+/);
+          if (words.length < 12 || words.length > 24) {
+            return 'Mnemonic must be 12-24 words';
+          }
+          
+          // Check if word count matches expected patterns (12, 15, 18, 21, 24)
+          if (![12, 15, 18, 21, 24].includes(words.length)) {
+            return 'Mnemonic must have exactly 12, 15, 18, 21, or 24 words';
+          }
+          
+          return true;
+        }
+      }, {
+        onCancel: () => {
+          console.log(chalk.yellow('\n⚠️  Operation cancelled.'));
+          process.exit(1);
+        }
+      });
+
+      if (!mnemonicResponse.mnemonic) {
+        console.log(chalk.yellow('⚠️  No mnemonic provided, aborting.'));
+        process.exit(1);
+      }
+
+      const mnemonic = mnemonicResponse.mnemonic.trim();
+      const actualWordCount = mnemonic.split(/\s+/).length;
+      
+      // Import the existing mnemonic
+      result = await client.addRecoveryMethod({ 
+        wordCount: actualWordCount, 
+        importMnemonic: mnemonic 
+      });
+      
+      console.log(chalk.green('✅ Recovery mnemonic imported successfully!'));
+    } else {
+      console.log(chalk.blue('🔄 Generating recovery mnemonic...'));
+      console.log(chalk.yellow('⚠️  This mnemonic allows complete access to your encrypted data'));
+      console.log(chalk.white('   Make sure to store it securely and never share it'));
+      console.log('');
+
+      // Generate recovery method
+      result = await client.addRecoveryMethod({ wordCount });
+      
+      console.log(chalk.green('✅ Recovery mnemonic generated successfully!'));
+    }
+    
+    // Display mnemonic (for generated ones, or confirmation for imported ones)
+    if (!context.flags.import) {
+      console.log('');
+      console.log(chalk.white('🔒 Your recovery mnemonic (write this down securely):'));
+      console.log('');
+      console.log(chalk.bgBlue.white(' ' + result.mnemonic + ' '));
+      console.log('');
+    } else {
+      console.log('');
+      console.log(chalk.white('🔒 Recovery method configured with your imported mnemonic'));
+      console.log('');
+    }
+    
+    // Ask user to confirm they've secured their mnemonic
+    const confirmMessage = context.flags.import 
+      ? 'Confirm you have your recovery mnemonic securely stored?'
+      : 'Have you securely written down your recovery mnemonic?';
+      
+    const confirmation = await prompts({
+      type: 'confirm',
+      name: 'confirmed',
+      message: confirmMessage,
+      initial: false
+    }, {
+      onCancel: () => {
+        console.log(chalk.yellow('\n⚠️  Operation cancelled.'));
+        process.exit(1);
+      }
+    });
+
+    if (!confirmation.confirmed) {
+      if (context.flags.import) {
+        console.log(chalk.yellow('⚠️  Please ensure your recovery mnemonic is securely stored before continuing'));
+        process.exit(1);
+      } else {
+        console.log(chalk.yellow('⚠️  Please write down your recovery mnemonic before continuing'));
+        console.log(chalk.white('   Recovery mnemonic: ' + result.mnemonic));
+        process.exit(1);
+      }
+    }
+
+    console.log(chalk.green('✅ Recovery method added to keychain'));
+    console.log('');
+    console.log(chalk.blue('💡 Usage:'));
+    console.log(chalk.gray(`   Test:   ${context.personality} keys test recovery`));
+    console.log(chalk.gray(`   Remove: ${context.personality} keys remove recovery`));
+    console.log('');
+    console.log(chalk.red('⚠️  CRITICAL SECURITY REMINDERS:'));
+    console.log(chalk.white('   • Store your mnemonic in a safe, offline location'));
+    console.log(chalk.white('   • Never share your mnemonic with anyone'));
+    console.log(chalk.white('   • Anyone with this mnemonic can access your encrypted data'));
+    console.log(chalk.white('   • Consider using a password manager or physical backup'));
+
+  } catch (error) {
+    console.error(chalk.red('❌ Recovery method generation failed:'), error.message);
     if (context.flags.debug) {
       console.error(error);
     }

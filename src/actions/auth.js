@@ -29,16 +29,23 @@ export const exec = async (context) => {
       break;
     }
     
+    case 'change-password': {
+      await changePasswordCommand(context);
+      break;
+    }
+    
     default: {
       console.error('Usage:');
       console.error(`  ${context.personality} auth login [--scope="user"] [--timeout=120] [--api-url=URL]`);
       console.error(`  ${context.personality} auth logout [--debug]`);
       console.error(`  ${context.personality} auth profile [--api-url=URL] [--debug]`);
+      console.error(`  ${context.personality} auth change-password [--api-url=URL] [--debug]`);
       console.error('');
       console.error('Commands:');
-      console.error('  login    Authenticate with Ident.Agency using OAuth2/PKCE flow');
-      console.error('  logout   Clear authentication session and keychain');
-      console.error('  profile  Show current user profile and session information');
+      console.error('  login           Authenticate with Ident.Agency using OAuth2/PKCE flow');
+      console.error('  logout          Clear authentication session and keychain');
+      console.error('  profile         Show current user profile and session information');
+      console.error('  change-password Change your keychain password');
       console.error('');
       console.error('Global Flags:');
       console.error('  --api-url  API base URL (default: config or https://www.ident.agency)');
@@ -334,6 +341,101 @@ async function profileCommand(context) {
     console.log(chalk.white(`   Has Refresh Token: ${session.refreshToken ? 'Yes' : 'No'}`));
   } catch (error) {
     console.error(chalk.red('❌ Failed to get profile:'), error.message);
+    if (context.flags.debug) {
+      console.error(error);
+    }
+    process.exit(1);
+  }
+}
+
+async function changePasswordCommand(context) {
+  try {
+    // Create password provider for password operations
+    const passwordProvider = {
+      async getPassword(promptText) {
+        const response = await prompts({
+          type: 'password',
+          name: 'password',
+          message: promptText,
+          validate: (value) =>
+            value.length >= 8 ? true : 'Password must be at least 8 characters',
+        });
+
+        if (!response.password) {
+          throw new Error('Password is required');
+        }
+
+        // Confirmation for new passwords
+        if (
+          promptText.toLowerCase().includes('new') ||
+          promptText.toLowerCase().includes('enter your new')
+        ) {
+          const confirmResponse = await prompts({
+            type: 'password',
+            name: 'password',
+            message: 'Confirm new password:',
+            validate: (value) => (value === response.password ? true : 'Passwords do not match'),
+          });
+
+          if (!confirmResponse.password) {
+            throw new Error('Password confirmation is required');
+          }
+        }
+
+        return response.password;
+      },
+    };
+
+    // Resolve API base URL with fallback logic: flag -> config -> production default
+    const apiBaseUrl = resolveApiBaseUrl(context.flags.apiUrl, context.flags.debug);
+
+    // Create SDK client instance
+    const client = IdentClient.create({
+      apiBaseUrl,
+      clientId: 'ident-cli',
+      scopes: ['vault.read', 'vault.write', 'vault.decrypt'],
+      passwordProvider,
+    });
+
+    console.log(chalk.white('🔐 Initializing Ident SDK...'));
+    await client.ready();
+
+    // Check if authenticated
+    const session = client.getSession();
+    if (!session) {
+      console.log(chalk.yellow('⚠️  Not authenticated. Please login first.'));
+      console.log(chalk.white(`   ${context.personality} auth login`));
+      process.exit(1);
+    }
+
+    console.log(chalk.white('🔑 Starting password change...'));
+    console.log(chalk.gray('   This will update your keychain password while preserving all unlock methods.'));
+
+    // Confirm the operation unless --force flag is used
+    if (!context.flags.force) {
+      const response = await prompts({
+        type: 'confirm',
+        name: 'confirm',
+        message: 'Are you sure you want to change your keychain password?',
+        initial: false,
+      });
+
+      if (!response.confirm) {
+        console.log(chalk.yellow('Password change cancelled'));
+        return;
+      }
+    }
+
+    // Execute password change
+    await client.changePassword();
+
+    console.log(chalk.green('✅ Password changed successfully!'));
+    console.log(chalk.white('   Your keychain has been updated with the new password.'));
+    console.log(chalk.white('   All other unlock methods (passkeys, device keys) remain unchanged.'));
+    console.log(chalk.gray('   Use your new password for future keychain access.'));
+
+  } catch (error) {
+    console.error(chalk.red('❌ Password change failed:'), error.message);
     if (context.flags.debug) {
       console.error(error);
     }

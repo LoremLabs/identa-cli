@@ -92,6 +92,25 @@ export const exec = async (context) => {
 
       return response.password;
     },
+    async getText(promptText) {
+      // Text input (not hidden like password)
+      const response = await prompts({
+        type: 'text',
+        name: 'text',
+        message: promptText,
+      }, {
+        onCancel: () => {
+          console.log(chalk.yellow('\n⚠️  Operation cancelled.'));
+          process.exit(1);
+        }
+      });
+
+      if (!response.text) {
+        throw new Error('Text input is required');
+      }
+
+      return response.text;
+    },
   };
 
   // Parse timeout from --timeout flag (in milliseconds)
@@ -153,7 +172,10 @@ export const exec = async (context) => {
       
       console.log(chalk.blue('🔐 Multiple unlock methods available. Choose one:'));
       methods.forEach((method, index) => {
-        console.log(chalk.white(`   ${index + 1}. ${method.displayName}`));
+        const displayText = method.detail 
+          ? `${method.displayName} ${chalk.gray(`(${method.detail})`)}`
+          : method.displayName;
+        console.log(chalk.white(`   ${index + 1}. ${displayText}`));
       });
       
       prompts({

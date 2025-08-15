@@ -83,7 +83,10 @@ export const exec = async (context) => {
       
       console.log(chalk.blue('🔐 Multiple unlock methods available. Choose one:'));
       methods.forEach((method, index) => {
-        console.log(chalk.white(`   ${index + 1}. ${method.displayName}`));
+        const displayText = method.detail 
+          ? `${method.displayName} ${chalk.gray(`(${method.detail})`)}`
+          : method.displayName;
+        console.log(chalk.white(`   ${index + 1}. ${displayText}`));
       });
       
       prompts({
