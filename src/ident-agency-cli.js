@@ -1,5 +1,16 @@
 #!/usr/bin/env -S npx tsx
 
+// Suppress the punycode deprecation warning from dependencies
+process.removeAllListeners('warning');
+process.on('warning', (warning) => {
+  if (warning.name === 'DeprecationWarning' && warning.code === 'DEP0040') {
+    // Ignore punycode deprecation warning
+    return;
+  }
+  // Re-emit other warnings
+  console.warn(warning.stack);
+});
+
 // import updateNotifier from "update-notifier";
 import { URL } from 'url';
 import commands from './index.js';

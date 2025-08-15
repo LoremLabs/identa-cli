@@ -4,6 +4,26 @@ import prompts from 'prompts';
 import config from '../lib/config.js';
 import { resolveApiBaseUrl } from '../lib/api-url.js';
 
+// Helper function to extract fragment visibility (copied from web example)
+function getFragmentVisibility(fragment) {
+  // Check enc property first
+  if (fragment.enc) {
+    return fragment.enc.alg === 'none' ? 'public' : 'private';
+  }
+
+  // Check meta flags
+  if (fragment.meta?.flags?.public !== undefined) {
+    return fragment.meta.flags.public ? 'public' : 'private';
+  }
+
+  // Check direct visibility property
+  if (fragment.visibility) {
+    return fragment.visibility;
+  }
+
+  return 'unknown';
+}
+
 export const description = 'Manage fragments (get, put, list, delete)';
 
 export const exec = async (context) => {
@@ -98,6 +118,40 @@ export const exec = async (context) => {
 
   try {
     await client.ready();
+
+    // Add unlock method selection handler
+    client.on('unlock_method_selection', (data) => {
+      const { methods, resolve, reject } = data;
+      
+      console.log(chalk.blue('🔐 Multiple unlock methods available. Choose one:'));
+      methods.forEach((method, index) => {
+        console.log(chalk.white(`   ${index + 1}. ${method.displayName}`));
+      });
+      
+      prompts({
+        type: 'number',
+        name: 'choice',
+        message: `Select unlock method (1-${methods.length}):`,
+        min: 1,
+        max: methods.length,
+        validate: (value) => {
+          if (!value || value < 1 || value > methods.length) {
+            return `Please enter a number between 1 and ${methods.length}`;
+          }
+          return true;
+        }
+      }).then((response) => {
+        if (!response.choice) {
+          reject(new Error('No unlock method selected'));
+        } else {
+          const selectedMethod = methods[response.choice - 1];
+          console.log(chalk.white(`✅ Selected: ${selectedMethod.displayName}`));
+          resolve(selectedMethod.id);
+        }
+      }).catch((error) => {
+        reject(error);
+      });
+    });
 
     // For write operations, always require authentication (with current user scopes)
     if (subcommand !== 'get' && subcommand !== 'list') {
@@ -280,29 +334,62 @@ export const exec = async (context) => {
       break;
     }
 
-    case 'list': {
-      const prefix = path || '';
+    case 'list':
+    case 'ls': {
+      const prefix = path || '/';
+      const detailed = context.flags.detailed || context.flags.d || context.flags.l;
 
       try {
-        console.log(chalk.white(`📋 Listing fragments${prefix ? ` with prefix: ${prefix}` : ''}`));
+        console.log(chalk.white(`📋 Listing fragments${prefix !== '/' ? ` with prefix: ${prefix}` : ''}${detailed ? ' (detailed)' : ''}`));
         const fragments = await client.list(prefix);
 
         if (fragments && fragments.length > 0) {
           console.log(chalk.green(`✅ Found ${fragments.length} fragment(s):`));
-          fragments.forEach((fragment, index) => {
-            console.log(`${index + 1}. ${fragment.path} (${fragment.visibility || 'unknown'})`);
-            if (fragment.metadata) {
-              console.log(`   Created: ${fragment.metadata.createdAt || 'unknown'}`);
-              console.log(`   Size: ${fragment.metadata.size || 'unknown'} bytes`);
+          
+          if (detailed && fragments.length > 0) {
+            // Fetch detailed information for each fragment
+            console.log(chalk.gray('Fetching detailed information...'));
+            for (let i = 0; i < fragments.length; i++) {
+              const fragmentPath = typeof fragments[i] === 'string' ? fragments[i] : fragments[i].path;
+              try {
+                // Get raw fragment to check visibility
+                const fullFragment = await client.getRaw(fragmentPath);
+                const visibility = getFragmentVisibility(fullFragment);
+                const icon = visibility === 'public' ? '🌐' : visibility === 'private' ? '🔒' : '❓';
+                
+                console.log(`${i + 1}. ${icon} ${fragmentPath} (${visibility})`);
+                
+                if (fullFragment.meta?.ts) {
+                  const createdDate = new Date(fullFragment.meta.ts).toISOString();
+                  console.log(chalk.gray(`   Created: ${createdDate}`));
+                }
+                
+                if (fullFragment.fragment) {
+                  const size = new TextEncoder().encode(fullFragment.fragment).length;
+                  console.log(chalk.gray(`   Size: ${size} bytes`));
+                }
+              } catch (err) {
+                // If we can't get details, fall back to basic display
+                const visibility = 'unknown';
+                console.log(`${i + 1}. ❓ ${fragmentPath} (${visibility})`);
+                console.log(chalk.gray(`   Error getting details: ${err.message}`));
+              }
             }
+          } else {
+            // Basic listing (just paths)
+            fragments.forEach((fragment, index) => {
+              const path = typeof fragment === 'string' ? fragment : fragment.path;
+              console.log(`${index + 1}. ${path}`);
+            });
+            console.log(chalk.gray(`\n💡 Use --detailed flag to see visibility and metadata`));
+          }
 
-            if (context.flags.debug) {
-              console.log(chalk.cyan(`🐛 DEBUG - Raw fragment ${index + 1}:`));
-              console.log(chalk.gray('-'.repeat(30)));
-              console.log(JSON.stringify(fragment, null, 2));
-              console.log(chalk.gray('-'.repeat(30)));
-            }
-          });
+          if (context.flags.debug) {
+            console.log(chalk.cyan(`🐛 DEBUG - Raw fragments:`));
+            console.log(chalk.gray('-'.repeat(30)));
+            console.log(JSON.stringify(fragments, null, 2));
+            console.log(chalk.gray('-'.repeat(30)));
+          }
         } else {
           console.log(chalk.yellow('⚠️  No fragments found'));
         }
@@ -360,12 +447,13 @@ export const exec = async (context) => {
         `  ${context.personality} fragment put PATH [VALUE] [--timeout=30000] [--no-retry] [--api-url=URL]`
       );
       console.error(
-        `  ${context.personality} fragment list [PREFIX] [--timeout=30000] [--no-retry] [--api-url=URL]`
+        `  ${context.personality} fragment list|ls [PREFIX] [-l|--detailed] [--timeout=30000] [--no-retry] [--api-url=URL]`
       );
       console.error(`  ${context.personality} fragment delete PATH [--timeout=30000] [--no-retry] [--api-url=URL]`);
       console.error('');
       console.error('Flags:');
       console.error('  --subject   Subject for accessing public fragments (get command only)');
+      console.error('  -l, --detailed  Show visibility and metadata (list/ls command only)');
       console.error('  --timeout   API timeout in milliseconds (default: 30000)');
       console.error('  --no-retry  Disable automatic retries on network errors');
       console.error('  --api-url   API base URL (default: config or https://www.ident.agency)');
