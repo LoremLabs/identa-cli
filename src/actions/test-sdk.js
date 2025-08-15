@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import prompts from 'prompts';
 import { IdentClient } from '../../../ident-agency-sdk/lib-js/index.js';
+import { resolveApiBaseUrl } from '../lib/api-url.js';
 
 export const description = 'Test the Ident SDK end-to-end (login, store, retrieve, list)';
 
@@ -61,16 +62,42 @@ export const exec = async (context) => {
       },
     };
 
+    // Resolve API base URL with fallback logic: flag -> config -> production default
+    const apiBaseUrl = resolveApiBaseUrl(context.flags.apiUrl, context.flags.debug);
+
     const client = IdentClient.create({
-      apiBaseUrl: 'http://localhost:5173', // Development server
+      apiBaseUrl,
       clientId: 'ident-cli',
       scopes: ['profile', 'vault.read', 'vault.write', 'vault.decrypt'],
       passwordProvider,
+      debug: context.flags.debug,
     });
 
     await client.ready();
     console.log(chalk.green('✅ SDK initialized'));
     console.log();
+
+    // Add unlock method selection handler
+    client.on('unlock_method_selection', (data) => {
+      const { methods, resolve, reject } = data;
+      
+      console.log(chalk.blue('🔐 Multiple unlock methods available. Choose one:'));
+      methods.forEach((method, index) => {
+        console.log(chalk.white(`   ${index + 1}. ${method.displayName}`));
+      });
+      
+      prompts({
+        type: 'number',
+        name: 'choice',
+        message: 'Select unlock method',
+        min: 1,
+        max: methods.length,
+        initial: 1
+      }).then(answer => {
+        const selectedMethod = methods[answer.choice - 1];
+        resolve(selectedMethod.id);
+      }).catch(reject);
+    });
 
     // Step 2: Authenticate
     console.log(chalk.white('2️⃣  Authenticating...'));

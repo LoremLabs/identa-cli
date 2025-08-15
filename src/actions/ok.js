@@ -16,6 +16,9 @@ const exec = async (context) => {
   let subcommand = context.input[1];
 
   if (!subcommand) {
+    console.log('ok');
+    process.exit(0);
+  } else {
     const result = await prompts({
       type: 'select',
       name: 'value',

@@ -3,6 +3,23 @@ import chalk from 'chalk';
 import prompts from 'prompts';
 import config from '../lib/config.js';
 import { resolveApiBaseUrl } from '../lib/api-url.js';
+import { getSecretProvider } from '../lib/secrets.js';
+
+// Create a device key provider function for CLI
+function createDeviceKeyProvider() {
+  return async (deviceId) => {
+    const secrets = await getSecretProvider();
+    const service = 'ident-agency-cli';
+    const key = `device-key-${deviceId}`;
+    
+    const deviceKeyB64 = await secrets.get(service, key);
+    if (!deviceKeyB64) {
+      throw new Error(`Device key not found for device ID: ${deviceId}`);
+    }
+    
+    return Buffer.from(deviceKeyB64, 'base64');
+  };
+}
 
 // Helper function to extract fragment visibility (copied from web example)
 function getFragmentVisibility(fragment) {
@@ -107,6 +124,7 @@ export const exec = async (context) => {
     clientId: 'ident-cli',
     scopes: ['profile', 'vault.read', 'vault.write', 'vault.decrypt'],
     passwordProvider,
+    deviceKeyProvider: createDeviceKeyProvider(),
     debug: context.flags.debug,
   });
 
