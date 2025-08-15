@@ -12,8 +12,8 @@ const appCli = async (commandInput) => {
   const { action, flags, input, version } = commandInput;
   flags.debug && log(chalk.green(JSON.stringify({ action, flags, input })));
 
-  if (flags.version) {
-    // show the version and exit
+  if (flags.version && !action) {
+    // show the CLI version only if no action specified
     log(`ident-cli version: ${version}`);
     process.exit(0);
   }

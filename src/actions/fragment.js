@@ -43,6 +43,11 @@ export const exec = async (context) => {
         name: 'password',
         message: promptText,
         validate: (value) => (value.length >= 8 ? true : 'Password must be at least 8 characters'),
+      }, {
+        onCancel: () => {
+          console.log(chalk.yellow('\n⚠️  Operation cancelled.'));
+          process.exit(1);
+        }
       });
 
       if (!response.password) {
@@ -56,6 +61,11 @@ export const exec = async (context) => {
           name: 'password',
           message: 'Confirm password:',
           validate: (value) => (value === response.password ? true : 'Passwords do not match'),
+        }, {
+          onCancel: () => {
+            console.log(chalk.yellow('\n⚠️  Operation cancelled.'));
+            process.exit(1);
+          }
         });
 
         if (!confirmResponse.password) {
@@ -166,7 +176,7 @@ export const exec = async (context) => {
     case 'get': {
       if (!path) {
         console.error(
-          `Usage: ${context.personality} fragment get PATH [--subject=email:user@domain.com] [--timeout=30000] [--no-retry] [--api-url=URL]`
+          `Usage: ${context.personality} fragment get PATH [--raw] [--version=N] [--subject=email:user@domain.com] [--timeout=30000] [--no-retry] [--api-url=URL]`
         );
         process.exit(1);
       }
@@ -209,11 +219,44 @@ export const exec = async (context) => {
           usePublicAccess = true;
         }
 
+        // Parse version flag if provided
+        const version = context.flags.version ? parseInt(context.flags.version, 10) : undefined;
+        if (version !== undefined && (isNaN(version) || version < 0)) {
+          console.error(chalk.red('❌ Version must be a non-negative integer'));
+          process.exit(1);
+        }
+
         if (usePublicAccess) {
           console.log(chalk.white(`🔍 Getting public fragment: ${path}`));
           console.log(chalk.gray(`   From subject: ${subjectToUse}`));
+          if (version !== undefined) {
+            console.log(chalk.gray(`   Version: ${version}`));
+          }
         } else {
           console.log(chalk.white(`🔍 Getting fragment: ${path}`));
+          if (version !== undefined) {
+            console.log(chalk.gray(`   Version: ${version}`));
+          }
+        }
+
+        // Handle --raw flag for raw fragment output
+        if (context.flags.raw) {
+          if (usePublicAccess) {
+            console.error(chalk.red('❌ Raw mode not available with public access (--subject)'));
+            console.error(chalk.gray('   Raw fragments require authenticated access to your own data'));
+            process.exit(1);
+          } else {
+            const opts = version !== undefined ? { version } : {};
+            const rawFragment = await client.getRaw(path, opts);
+            if (rawFragment) {
+              // In raw mode, just output the JSON without decoration
+              console.log(JSON.stringify(rawFragment, null, 2));
+            } else {
+              console.error(chalk.red('❌ Fragment not found'));
+              process.exit(1);
+            }
+            return; // Exit early for raw mode
+          }
         }
 
         if (context.flags.debug) {
@@ -221,7 +264,8 @@ export const exec = async (context) => {
           if (usePublicAccess) {
             console.log(chalk.yellow('   (Raw envelope not available in public access mode)'));
           } else {
-            const rawFragment = await client.getRaw(path);
+            const opts = version !== undefined ? { version } : {};
+            const rawFragment = await client.getRaw(path, opts);
             if (rawFragment) {
               console.log(chalk.magenta('📦 RAW FRAGMENT ENVELOPE:'));
               console.log(chalk.gray('='.repeat(50)));
@@ -232,10 +276,11 @@ export const exec = async (context) => {
         }
 
         let fragment;
+        const opts = version !== undefined ? { version } : {};
         if (usePublicAccess) {
-          fragment = await client.getPublic(path, subjectToUse);
+          fragment = await client.getPublic(path, subjectToUse, opts);
         } else {
-          fragment = await client.get(path);
+          fragment = await client.get(path, opts);
         }
 
         if (fragment) {
@@ -260,8 +305,15 @@ export const exec = async (context) => {
     case 'put': {
       if (!path) {
         console.error(
-          `Usage: ${context.personality} fragment put PATH [VALUE] [--timeout=30000] [--no-retry] [--api-url=URL]`
+          `Usage: ${context.personality} fragment put PATH [VALUE] [--version=N] [--visibility=public|private] [--timeout=30000] [--no-retry] [--api-url=URL]`
         );
+        process.exit(1);
+      }
+
+      // Parse version flag if provided
+      const version = context.flags.version ? parseInt(context.flags.version, 10) : undefined;
+      if (version !== undefined && (isNaN(version) || version < 0)) {
+        console.error(chalk.red('❌ Version must be a non-negative integer'));
         process.exit(1);
       }
 
@@ -274,42 +326,96 @@ export const exec = async (context) => {
           data = value;
         }
       } else {
-        // Prompt for value
-        const response = await prompts({
-          type: 'text',
-          name: 'data',
-          message: `Enter value for fragment ${path} (JSON or string):`,
-        });
-
-        if (!response.data) {
-          console.log(chalk.yellow('⚠️  No data provided, aborting.'));
-          process.exit(0);
+        // Check if data is available on stdin
+        let stdinData = '';
+        
+        // Check if stdin is not a TTY (meaning it's piped/redirected)
+        if (!process.stdin.isTTY) {
+          // Read from stdin
+          process.stdin.setEncoding('utf8');
+          
+          for await (const chunk of process.stdin) {
+            stdinData += chunk;
+          }
+          
+          stdinData = stdinData.trim();
         }
+        
+        if (stdinData) {
+          // Use stdin data
+          try {
+            data = JSON.parse(stdinData);
+          } catch {
+            data = stdinData;
+          }
+        } else {
+          // Prompt for value
+          const response = await prompts({
+            type: 'text',
+            name: 'data',
+            message: `Enter value for fragment ${path} (JSON or string):`,
+          }, {
+            onCancel: () => {
+              console.log(chalk.yellow('\n⚠️  Operation cancelled.'));
+              process.exit(1);
+            }
+          });
 
-        try {
-          data = JSON.parse(response.data);
-        } catch {
-          data = response.data;
+          if (!response.data) {
+            console.log(chalk.yellow('⚠️  No data provided, aborting.'));
+            process.exit(0);
+          }
+
+          try {
+            data = JSON.parse(response.data);
+          } catch {
+            data = response.data;
+          }
         }
       }
 
-      // Ask for visibility
-      const visibilityResponse = await prompts({
-        type: 'select',
-        name: 'visibility',
-        message: 'Fragment visibility:',
-        choices: [
-          { title: 'Private (encrypted)', value: 'private' },
-          { title: 'Public (plaintext)', value: 'public' },
-        ],
-        initial: 0,
-      });
+      // Check for visibility flag or ask for it
+      let visibility = context.flags.visibility || context.flags.v;
+      
+      if (!visibility) {
+        const visibilityResponse = await prompts({
+          type: 'select',
+          name: 'visibility',
+          message: 'Fragment visibility:',
+          choices: [
+            { title: 'Private (encrypted)', value: 'private' },
+            { title: 'Public (plaintext)', value: 'public' },
+          ],
+          initial: 0,
+        }, {
+          onCancel: () => {
+            console.log(chalk.yellow('\n⚠️  Operation cancelled.'));
+            process.exit(1);
+          }
+        });
+
+        if (visibilityResponse.visibility === undefined) {
+          console.log(chalk.yellow('⚠️  No visibility selected, aborting.'));
+          process.exit(0);
+        }
+        
+        visibility = visibilityResponse.visibility;
+      }
 
       try {
-        console.log(chalk.white(`💾 Storing ${visibilityResponse.visibility} fragment: ${path}`));
-        await client.put(path, data, {
-          visibility: visibilityResponse.visibility,
-        });
+        console.log(chalk.white(`💾 Storing ${visibility} fragment: ${path}`));
+        if (version !== undefined) {
+          console.log(chalk.gray(`   Version: ${version}`));
+        }
+        
+        const opts = {
+          visibility: visibility,
+        };
+        if (version !== undefined) {
+          opts.version = version;
+        }
+        
+        await client.put(path, data, opts);
         console.log(chalk.green('✅ Fragment stored successfully'));
 
         if (context.flags.debug) {
@@ -417,6 +523,11 @@ export const exec = async (context) => {
         name: 'confirm',
         message: `Are you sure you want to delete fragment: ${path}?`,
         initial: false,
+      }, {
+        onCancel: () => {
+          console.log(chalk.yellow('\n⚠️  Operation cancelled.'));
+          process.exit(1);
+        }
       });
 
       if (!confirmResponse.confirm) {
@@ -441,10 +552,10 @@ export const exec = async (context) => {
     default: {
       console.error('Usage:');
       console.error(
-        `  ${context.personality} fragment get PATH [--subject=email:user@domain.com] [--timeout=30000] [--no-retry] [--api-url=URL]`
+        `  ${context.personality} fragment get PATH [--raw] [--version=N] [--subject=email:user@domain.com] [--timeout=30000] [--no-retry] [--api-url=URL]`
       );
       console.error(
-        `  ${context.personality} fragment put PATH [VALUE] [--timeout=30000] [--no-retry] [--api-url=URL]`
+        `  ${context.personality} fragment put PATH [VALUE] [--version=N] [--visibility=public|private] [--timeout=30000] [--no-retry] [--api-url=URL]`
       );
       console.error(
         `  ${context.personality} fragment list|ls [PREFIX] [-l|--detailed] [--timeout=30000] [--no-retry] [--api-url=URL]`
@@ -452,12 +563,23 @@ export const exec = async (context) => {
       console.error(`  ${context.personality} fragment delete PATH [--timeout=30000] [--no-retry] [--api-url=URL]`);
       console.error('');
       console.error('Flags:');
+      console.error('  --raw       Get raw fragment before decryption (get command only)');
+      console.error('  --version   Specific version number to retrieve/create (get and put commands)');
       console.error('  --subject   Subject for accessing public fragments (get command only)');
+      console.error('  --visibility, -v  Fragment visibility: public or private (put command only)');
       console.error('  -l, --detailed  Show visibility and metadata (list/ls command only)');
       console.error('  --timeout   API timeout in milliseconds (default: 30000)');
       console.error('  --no-retry  Disable automatic retries on network errors');
       console.error('  --api-url   API base URL (default: config or https://www.ident.agency)');
       console.error('  --debug     Enable debug output');
+      console.error('');
+      console.error('Examples:');
+      console.error('  echo \'{"name": "John"}\' | identa fragment put profile/user --visibility=public');
+      console.error('  cat secrets.json | identa fragment put config/api-keys --visibility=private');
+      console.error('  identa fragment put test/simple "hello world" -v public');
+      console.error('  identa fragment get profile/user --raw  # Get raw fragment envelope');
+      console.error('  identa fragment get profile/user --version=123  # Get specific version');
+      console.error('  identa fragment put profile/user "John Smith" --version=124 --visibility=public  # Create specific version');
       process.exit(1);
     }
   }
