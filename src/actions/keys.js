@@ -4,6 +4,7 @@ import { IdentClient } from '../../../ident-agency-sdk/lib-js/index.js';
 import chalk from 'chalk';
 import config from '../lib/config.js';
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import { getSecretProvider } from '../lib/secrets.js';
 import os from 'os';
 import path from 'path';
@@ -69,7 +70,7 @@ export const exec = async (context) => {
       console.error(
         `  ${context.personality} keys recovery [--words=24] [--api-url=URL] [--debug]`
       );
-      console.error(`  ${context.personality} keys ssh [--api-url=URL] [--debug]`);
+      console.error(`  ${context.personality} keys ssh [--ssh-key=PATH] [--api-url=URL] [--debug]`);
       console.error('');
       console.error('Commands:');
       console.error('  register   Register a new authentication key (passkey via browser)');
@@ -84,6 +85,7 @@ export const exec = async (context) => {
       console.error('');
       console.error('Global Flags:');
       console.error('  --api-url  API base URL (default: config or https://www.ident.agency)');
+      console.error('  --ssh-key  Path to SSH private key (default: ~/.ssh/id_ed25519 or ~/.ssh/id_rsa)');
       console.error('  --debug    Enable debug output');
       console.error('  --yes      Skip confirmation prompts (auto-confirm)');
       process.exit(1);
@@ -126,6 +128,7 @@ async function registerCommand(context) {
       scopes: ['user', 'vault.read', 'vault.write', 'vault.decrypt'],
       passwordProvider,
       deviceKeyProvider: createDeviceKeyProvider(),
+      sshKeyProvider: createSSHKeyProvider(context.flags.sshKey),
       debug: context.flags.debug,
     });
 
@@ -188,6 +191,7 @@ async function listCommand(context) {
       scopes: ['user', 'vault.read', 'vault.decrypt'],
       passwordProvider,
       deviceKeyProvider: createDeviceKeyProvider(),
+      sshKeyProvider: createSSHKeyProvider(context.flags.sshKey),
       debug: context.flags.debug,
     });
 
@@ -381,6 +385,7 @@ async function removeCommand(context) {
       scopes: ['user', 'vault.read', 'vault.write', 'vault.decrypt'],
       passwordProvider,
       deviceKeyProvider: createDeviceKeyProvider(),
+      sshKeyProvider: createSSHKeyProvider(context.flags.sshKey),
       debug: context.flags.debug,
     });
 
@@ -563,6 +568,7 @@ async function testCommand(context) {
       scopes: ['user', 'vault.read', 'vault.decrypt'],
       passwordProvider,
       deviceKeyProvider: createDeviceKeyProvider(),
+      sshKeyProvider: createSSHKeyProvider(context.flags.sshKey),
       debug: context.flags.debug,
     });
 
@@ -878,6 +884,81 @@ function createDeviceKeyProvider() {
   };
 }
 
+// Create an SSH key provider function for CLI
+function createSSHKeyProvider(customKeyPath) {
+  return async (keyId) => {
+    // Try to find the SSH private key
+    // First try the default location
+    const defaultKeyPath = path.join(os.homedir(), '.ssh', 'id_ed25519');
+    const rsaKeyPath = path.join(os.homedir(), '.ssh', 'id_rsa');
+    
+    let keyPath;
+    
+    // If custom key path provided via flag, use it
+    if (customKeyPath) {
+      // Expand ~ to home directory if present
+      keyPath = customKeyPath.replace(/^~/, os.homedir());
+      
+      if (!fsSync.existsSync(keyPath)) {
+        console.error(chalk.red(`❌ SSH key not found at: ${keyPath}`));
+        // Fall back to prompting
+        const response = await prompts({
+          type: 'text',
+          name: 'keyPath',
+          message: 'Enter path to SSH private key:',
+          initial: defaultKeyPath
+        });
+        if (!response.keyPath) {
+          throw new Error('SSH key path is required');
+        }
+        keyPath = response.keyPath.replace(/^~/, os.homedir());
+      }
+    } else {
+      // Try default locations
+      keyPath = defaultKeyPath;
+      if (!fsSync.existsSync(keyPath)) {
+        if (fsSync.existsSync(rsaKeyPath)) {
+          keyPath = rsaKeyPath;
+        } else {
+          // Prompt for custom path
+          console.log(chalk.yellow('⚠️  Default SSH keys not found (id_ed25519 or id_rsa)'));
+          const response = await prompts({
+            type: 'text',
+            name: 'keyPath',
+            message: 'Enter path to SSH private key:',
+            initial: defaultKeyPath
+          });
+          if (!response.keyPath) {
+            throw new Error('SSH key path is required');
+          }
+          keyPath = response.keyPath.replace(/^~/, os.homedir());
+        }
+      }
+    }
+    
+    // Verify the key exists before trying to read it
+    if (!fsSync.existsSync(keyPath)) {
+      throw new Error(`SSH key not found at: ${keyPath}`);
+    }
+    
+    // Read the private key
+    const privateKey = fsSync.readFileSync(keyPath, 'utf8');
+    
+    // Check if passphrase is needed
+    let passphrase;
+    if (privateKey.includes('ENCRYPTED')) {
+      const response = await prompts({
+        type: 'password',
+        name: 'passphrase',
+        message: `Enter passphrase for SSH key (${path.basename(keyPath)}):`
+      });
+      passphrase = response.passphrase;
+    }
+    
+    return { privateKey, passphrase };
+  };
+}
+
 async function deviceCommand(context) {
   try {
     // Create password provider for keychain operations
@@ -913,6 +994,7 @@ async function deviceCommand(context) {
       scopes: ['user', 'vault.read', 'vault.write', 'vault.decrypt'],
       passwordProvider,
       deviceKeyProvider: createDeviceKeyProvider(),
+      sshKeyProvider: createSSHKeyProvider(context.flags.sshKey),
       debug: context.flags.debug,
     });
 
@@ -1201,6 +1283,7 @@ async function recoveryCommand(context) {
       scopes: ['user', 'vault.read', 'vault.write', 'vault.decrypt'],
       passwordProvider,
       deviceKeyProvider: createDeviceKeyProvider(),
+      sshKeyProvider: createSSHKeyProvider(context.flags.sshKey),
       debug: context.flags.debug,
     });
 
@@ -1437,6 +1520,7 @@ async function sshCommand(context) {
       scopes: ['user', 'vault.read', 'vault.write', 'vault.decrypt'],
       passwordProvider,
       deviceKeyProvider: createDeviceKeyProvider(),
+      sshKeyProvider: createSSHKeyProvider(context.flags.sshKey),
       debug: context.flags.debug,
     });
 
@@ -1501,8 +1585,18 @@ async function sshCommand(context) {
     });
 
     // Get the public key path
-    const publicKeyPath =
-      context.flags['public-key'] || path.join(os.homedir(), '.ssh', 'id_ed25519.pub');
+    // If --ssh-key is provided, derive the public key path from it
+    let publicKeyPath;
+    if (context.flags.sshKey) {
+      // Expand tilde and add .pub extension
+      const privateKeyPath = context.flags.sshKey.replace(/^~/, os.homedir());
+      publicKeyPath = privateKeyPath + '.pub';
+    } else if (context.flags['public-key']) {
+      publicKeyPath = context.flags['public-key'];
+    } else {
+      // Default to id_ed25519.pub
+      publicKeyPath = path.join(os.homedir(), '.ssh', 'id_ed25519.pub');
+    }
 
     console.log(chalk.white('🔑 SSH Key Information:'));
     console.log(chalk.white(`   Key path: ${publicKeyPath}`));

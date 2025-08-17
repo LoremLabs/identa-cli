@@ -4,6 +4,9 @@ import prompts from 'prompts';
 import config from '../lib/config.js';
 import { resolveApiBaseUrl } from '../lib/api-url.js';
 import { getSecretProvider } from '../lib/secrets.js';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 // Create a device key provider function for CLI
 function createDeviceKeyProvider() {
@@ -18,6 +21,77 @@ function createDeviceKeyProvider() {
     }
     
     return Buffer.from(deviceKeyB64, 'base64');
+  };
+}
+
+// Create an SSH key provider function for CLI
+function createSSHKeyProvider(customKeyPath) {
+  return async (keyId) => {
+    const defaultKeyPath = path.join(os.homedir(), '.ssh', 'id_ed25519');
+    const rsaKeyPath = path.join(os.homedir(), '.ssh', 'id_rsa');
+    
+    let keyPath;
+    
+    // If custom key path provided via flag, use it
+    if (customKeyPath) {
+      // Expand ~ to home directory if present
+      keyPath = customKeyPath.replace(/^~/, os.homedir());
+      
+      if (!fs.existsSync(keyPath)) {
+        console.error(chalk.red(`❌ SSH key not found at: ${keyPath}`));
+        // Fall back to prompting
+        const response = await prompts({
+          type: 'text',
+          name: 'keyPath',
+          message: 'Enter path to SSH private key:',
+          initial: defaultKeyPath
+        });
+        if (!response.keyPath) {
+          throw new Error('SSH key path is required');
+        }
+        keyPath = response.keyPath.replace(/^~/, os.homedir());
+      }
+    } else {
+      // Try default locations
+      keyPath = defaultKeyPath;
+      if (!fs.existsSync(keyPath)) {
+        if (fs.existsSync(rsaKeyPath)) {
+          keyPath = rsaKeyPath;
+        } else {
+          // Prompt for custom path
+          console.log(chalk.yellow('⚠️  Default SSH keys not found (id_ed25519 or id_rsa)'));
+          const response = await prompts({
+            type: 'text',
+            name: 'keyPath',
+            message: 'Enter path to SSH private key:',
+            initial: defaultKeyPath
+          });
+          if (!response.keyPath) {
+            throw new Error('SSH key path is required');
+          }
+          keyPath = response.keyPath.replace(/^~/, os.homedir());
+        }
+      }
+    }
+    
+    // Verify the key exists before trying to read it
+    if (!fs.existsSync(keyPath)) {
+      throw new Error(`SSH key not found at: ${keyPath}`);
+    }
+    
+    const privateKey = fs.readFileSync(keyPath, 'utf8');
+    
+    let passphrase;
+    if (privateKey.includes('ENCRYPTED')) {
+      const response = await prompts({
+        type: 'password',
+        name: 'passphrase',
+        message: `Enter passphrase for SSH key (${path.basename(keyPath)}):`
+      });
+      passphrase = response.passphrase;
+    }
+    
+    return { privateKey, passphrase };
   };
 }
 
@@ -138,12 +212,21 @@ export const exec = async (context) => {
   const apiBaseUrl = resolveApiBaseUrl(context.flags.apiUrl, context.flags.debug);
 
   // Create SDK client instance
+  const sshProvider = createSSHKeyProvider(context.flags.sshKey);
+  if (context.flags.debug) {
+    console.log(chalk.blue('🔧 SSH Key Provider created:', typeof sshProvider));
+    if (context.flags.sshKey) {
+      console.log(chalk.blue('🔧 Custom SSH key path:', context.flags.sshKey));
+    }
+  }
+  
   const client = IdentClient.create({
     apiBaseUrl,
     clientId: 'ident-cli',
     scopes: ['profile', 'vault.read', 'vault.write', 'vault.decrypt'],
     passwordProvider,
     deviceKeyProvider: createDeviceKeyProvider(),
+    sshKeyProvider: sshProvider,
     debug: context.flags.debug,
   });
 
@@ -662,6 +745,7 @@ export const exec = async (context) => {
       console.error('  --subject   Subject for accessing public fragments (get command only)');
       console.error('  --visibility, -v  Fragment visibility: public or private (put command only)');
       console.error('  -l, --detailed  Show visibility and metadata (list/ls command only)');
+      console.error('  --ssh-key   Path to SSH private key for unlock (default: ~/.ssh/id_ed25519 or ~/.ssh/id_rsa)');
       console.error('  --timeout   API timeout in milliseconds (default: 30000)');
       console.error('  --no-retry  Disable automatic retries on network errors');
       console.error('  --api-url   API base URL (default: config or https://www.ident.agency)');
