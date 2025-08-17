@@ -589,6 +589,59 @@ export const exec = async (context) => {
       break;
     }
 
+    case 'recover': {
+      if (!path) {
+        console.error(
+          `Usage: ${context.personality} fragment recover PATH --version=N [--timeout=30000] [--no-retry] [--api-url=URL]`
+        );
+        process.exit(1);
+      }
+
+      const version = context.flags.version;
+      if (!version) {
+        console.error(chalk.red('❌ Version is required for recover operation'));
+        console.error(
+          `Usage: ${context.personality} fragment recover PATH --version=N`
+        );
+        process.exit(1);
+      }
+
+      // Confirm recovery
+      const confirmResponse = await prompts({
+        type: 'confirm',
+        name: 'confirm',
+        message: `Are you sure you want to recover version ${version} of ${path} as the current version?`,
+        initial: false,
+      }, {
+        onCancel: () => {
+          console.log(chalk.yellow('\n⚠️  Operation cancelled.'));
+          process.exit(1);
+        }
+      });
+
+      if (!confirmResponse.confirm) {
+        console.log(chalk.yellow('⚠️  Recovery cancelled'));
+        process.exit(0);
+      }
+
+      try {
+        console.log(chalk.white(`🔄 Recovering fragment: ${path} (version ${version})`));
+        const result = await client.recover(path, parseInt(version, 10));
+        console.log(chalk.green('✅ Fragment recovered successfully'));
+        
+        if (context.flags.debug) {
+          console.log(chalk.gray('Result:'), result);
+        }
+      } catch (error) {
+        console.error(chalk.red('❌ Failed to recover fragment:'), error.message);
+        if (context.flags.debug) {
+          console.error(error);
+        }
+        process.exit(1);
+      }
+      break;
+    }
+
     default: {
       console.error('Usage:');
       console.error(
@@ -601,10 +654,11 @@ export const exec = async (context) => {
         `  ${context.personality} fragment list|ls [PREFIX] [-l|--detailed] [--timeout=30000] [--no-retry] [--api-url=URL]`
       );
       console.error(`  ${context.personality} fragment delete PATH [--timeout=30000] [--no-retry] [--api-url=URL]`);
+      console.error(`  ${context.personality} fragment recover PATH --version=N [--timeout=30000] [--no-retry] [--api-url=URL]`);
       console.error('');
       console.error('Flags:');
       console.error('  --raw       Get raw fragment before decryption (get command only)');
-      console.error('  --version   Specific version number to retrieve/create (get and put commands)');
+      console.error('  --version   Specific version number to retrieve/create/recover (get, put, and recover commands)');
       console.error('  --subject   Subject for accessing public fragments (get command only)');
       console.error('  --visibility, -v  Fragment visibility: public or private (put command only)');
       console.error('  -l, --detailed  Show visibility and metadata (list/ls command only)');
