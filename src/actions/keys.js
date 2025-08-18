@@ -635,24 +635,18 @@ async function testCommand(context) {
         process.exit(1);
       }
 
-      // Filter to methods that are testable in CLI
-      const testableMethods = detailedMethods.filter(
-        (m) => m.method === 'password' || m.method === 'device' || m.method === 'recovery'
-      );
+      // Show all methods, but we'll indicate which ones aren't testable in CLI
+      const allMethods = detailedMethods;
 
-      if (testableMethods.length === 0) {
-        console.log(chalk.yellow('⚠️  No CLI-testable unlock methods found'));
-        console.log(
-          chalk.white('   Only password, device, and recovery methods can be tested in CLI')
-        );
-        console.log(chalk.white('   Use the web interface to test passkey methods'));
+      if (allMethods.length === 0) {
+        console.log(chalk.yellow('⚠️  No unlock methods found to test'));
         process.exit(1);
       }
 
-      console.log(chalk.green('🧪 Available unlock methods to test:'));
+      console.log(chalk.green('🧪 Available unlock methods:'));
 
       // Create selection options
-      const choices = testableMethods.map((method, index) => {
+      const choices = allMethods.map((method, index) => {
         const icon =
           method.method === 'password'
             ? '🔒'
@@ -660,11 +654,24 @@ async function testCommand(context) {
             ? '💻'
             : method.method === 'recovery'
             ? '🔄'
+            : method.method === 'ssh'
+            ? '🔐'
+            : method.method.startsWith('passkey')
+            ? '🔑'
             : '❓';
 
         let displayName = `${icon} ${method.method}`;
         if (method.method === 'device' && method.device?.description) {
           displayName = `${icon} device - ${method.device.description}`;
+        }
+        
+        // Mark non-testable methods
+        const isTestableInCLI = method.method === 'password' || 
+                                method.method === 'device' || 
+                                method.method === 'recovery' || 
+                                method.method === 'ssh';
+        if (!isTestableInCLI) {
+          displayName += chalk.gray(' (not testable in CLI)');
         }
 
         return {
@@ -694,19 +701,23 @@ async function testCommand(context) {
     }
 
     // Check if method is supported in CLI
-    if (method.startsWith('passkey')) {
-      console.error(chalk.red('❌ Passkey testing is not available in CLI'));
-      console.error(chalk.white('   Passkeys require a browser environment with WebAuthn support'));
-      console.error(chalk.white('   Use the web interface to test passkeys:'));
-      console.error(chalk.white(`   ${apiBaseUrl}/example`));
-      process.exit(1);
-    }
-
-    if (method !== 'password' && method !== 'device' && method !== 'recovery' && method !== 'ssh') {
-      console.error(chalk.red(`❌ Testing method '${method}' is not supported in CLI`));
-      console.error(
-        chalk.white('   Only password, device, recovery, and SSH testing is supported in CLI')
-      );
+    const isTestableInCLI = method === 'password' || 
+                            method === 'device' || 
+                            method === 'recovery' || 
+                            method === 'ssh';
+    
+    if (!isTestableInCLI) {
+      if (method.startsWith('passkey')) {
+        console.error(chalk.red('❌ Passkey testing is not available in CLI'));
+        console.error(chalk.white('   Passkeys require a browser environment with WebAuthn support'));
+        console.error(chalk.white('   Use the web interface to test passkeys:'));
+        console.error(chalk.white(`   ${apiBaseUrl}/example`));
+      } else {
+        console.error(chalk.red(`❌ Testing method '${method}' is not supported in CLI`));
+        console.error(
+          chalk.white('   Only password, device, recovery, and SSH testing is supported in CLI')
+        );
+      }
       process.exit(1);
     }
 
