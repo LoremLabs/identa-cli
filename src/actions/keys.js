@@ -6,6 +6,7 @@ import config from '../lib/config.js';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import { getSecretProvider } from '../lib/secrets.js';
+import { createDeviceKeyStorageProvider } from '../lib/device-key-storage.js';
 import os from 'os';
 import path from 'path';
 import prompts from 'prompts';
@@ -112,6 +113,23 @@ async function registerCommand(context) {
           throw new Error('Password is required for keychain operations');
         }
 
+        // Confirmation - only if this looks like initial setup (not unlock)
+        if (
+          promptText.toLowerCase().includes('create') ||
+          promptText.toLowerCase().includes('new')
+        ) {
+          const confirmResponse = await prompts({
+            type: 'password',
+            name: 'password',
+            message: 'Confirm password:',
+            validate: (value) => (value === response.password ? true : 'Passwords do not match'),
+          });
+
+          if (!confirmResponse.password) {
+            throw new Error('Password confirmation is required');
+          }
+        }
+
         return response.password;
       },
     };
@@ -121,6 +139,13 @@ async function registerCommand(context) {
 
     console.log(chalk.white('🔐 Initializing Ident SDK...'));
 
+    // Create device key storage provider for the SDK
+    const deviceKeyStorageProvider = await createDeviceKeyStorageProvider();
+    console.log(chalk.blue('🔧 Creating SDK with device storage provider:', !!deviceKeyStorageProvider));
+    if (context.flags.debug) {
+      console.log(chalk.blue('🔧 Device key storage provider created:', !!deviceKeyStorageProvider));
+    }
+    
     // Create SDK client instance
     const client = IdentClient.create({
       apiBaseUrl,
@@ -128,6 +153,7 @@ async function registerCommand(context) {
       scopes: ['user', 'vault.read', 'vault.write', 'vault.decrypt'],
       passwordProvider,
       deviceKeyProvider: createDeviceKeyProvider(),
+      deviceKeyStorageProvider,
       sshKeyProvider: createSSHKeyProvider(context.flags.sshKey),
       debug: context.flags.debug,
     });
@@ -177,12 +203,32 @@ async function listCommand(context) {
           throw new Error('Password is required for keychain operations');
         }
 
+        // Confirmation - only if this looks like initial setup (not unlock)
+        if (
+          promptText.toLowerCase().includes('create') ||
+          promptText.toLowerCase().includes('new')
+        ) {
+          const confirmResponse = await prompts({
+            type: 'password',
+            name: 'password',
+            message: 'Confirm password:',
+            validate: (value) => (value === response.password ? true : 'Passwords do not match'),
+          });
+
+          if (!confirmResponse.password) {
+            throw new Error('Password confirmation is required');
+          }
+        }
+
         return response.password;
       },
     };
 
     // Resolve API base URL with fallback logic: flag -> config -> production default
     const apiBaseUrl = resolveApiBaseUrl(context.flags.apiUrl, context.flags.debug);
+
+    // Create device key storage provider for the SDK
+    const deviceKeyStorageProvider = await createDeviceKeyStorageProvider();
 
     // Create SDK client instance
     const client = IdentClient.create({
@@ -191,6 +237,7 @@ async function listCommand(context) {
       scopes: ['user', 'vault.read', 'vault.decrypt'],
       passwordProvider,
       deviceKeyProvider: createDeviceKeyProvider(),
+      deviceKeyStorageProvider,
       sshKeyProvider: createSSHKeyProvider(context.flags.sshKey),
       debug: context.flags.debug,
     });
@@ -384,6 +431,23 @@ async function removeCommand(context) {
           throw new Error('Password is required for keychain operations');
         }
 
+        // Confirmation - only if this looks like initial setup (not unlock)
+        if (
+          promptText.toLowerCase().includes('create') ||
+          promptText.toLowerCase().includes('new')
+        ) {
+          const confirmResponse = await prompts({
+            type: 'password',
+            name: 'password',
+            message: 'Confirm password:',
+            validate: (value) => (value === response.password ? true : 'Passwords do not match'),
+          });
+
+          if (!confirmResponse.password) {
+            throw new Error('Password confirmation is required');
+          }
+        }
+
         return response.password;
       },
     };
@@ -571,12 +635,32 @@ async function testCommand(context) {
           throw new Error('Password is required for keychain operations');
         }
 
+        // Confirmation - only if this looks like initial setup (not unlock)
+        if (
+          promptText.toLowerCase().includes('create') ||
+          promptText.toLowerCase().includes('new')
+        ) {
+          const confirmResponse = await prompts({
+            type: 'password',
+            name: 'password',
+            message: 'Confirm password:',
+            validate: (value) => (value === response.password ? true : 'Passwords do not match'),
+          });
+
+          if (!confirmResponse.password) {
+            throw new Error('Password confirmation is required');
+          }
+        }
+
         return response.password;
       },
     };
 
     // Resolve API base URL with fallback logic: flag -> config -> production default
     const apiBaseUrl = resolveApiBaseUrl(context.flags.apiUrl, context.flags.debug);
+
+    // Create device key storage provider for the SDK
+    const deviceKeyStorageProvider = await createDeviceKeyStorageProvider();
 
     // Create SDK client instance
     const client = IdentClient.create({
@@ -585,6 +669,7 @@ async function testCommand(context) {
       scopes: ['user', 'vault.read', 'vault.decrypt'],
       passwordProvider,
       deviceKeyProvider: createDeviceKeyProvider(),
+      deviceKeyStorageProvider,
       sshKeyProvider: createSSHKeyProvider(context.flags.sshKey),
       debug: context.flags.debug,
     });
@@ -796,7 +881,9 @@ async function testCommand(context) {
 
         console.log(chalk.white('   Found wrapped seed, testing device key...'));
         const deviceKeyProvider = createDeviceKeyProvider();
-        await client.unlockWithDevice(wrappedSeed, deviceKeyProvider);
+        // Pass the keyId which includes the device ID
+        const deviceKey = await deviceKeyProvider(targetMethod.keyId);
+        await client.unlockWithDevice(wrappedSeed, async () => deviceKey);
         console.log(chalk.green('✅ Device unlock method test successful'));
         console.log(chalk.white('   Device key was found and successfully unlocked keychain'));
       } catch (error) {
@@ -952,14 +1039,27 @@ function getPlatformInfo() {
 
 // Create a device key provider function for CLI
 function createDeviceKeyProvider() {
-  return async (deviceId) => {
+  return async (keyIdOrDeviceId) => {
     const secrets = await getSecretProvider();
     const service = 'ident-agency-cli';
-    const key = `device-key-${deviceId}`;
-
-    const deviceKeyB64 = await secrets.get(service, key);
+    
+    // Try to get device key using the full keyId first (new format)
+    // Format: "device:xxx-xxx:timestamp"
+    let key = `device-key-${keyIdOrDeviceId}`;
+    let deviceKeyB64 = await secrets.get(service, key);
+    
+    // If not found and it looks like a keyId, try extracting just the device ID (old format)
+    if (!deviceKeyB64 && keyIdOrDeviceId.startsWith('device:')) {
+      const parts = keyIdOrDeviceId.split(':');
+      if (parts.length >= 2) {
+        const userScopedDeviceId = parts[1]; // This is the userScopedDeviceId
+        key = `device-key-${userScopedDeviceId}`;
+        deviceKeyB64 = await secrets.get(service, key);
+      }
+    }
+    
     if (!deviceKeyB64) {
-      throw new Error(`Device key not found for device ID: ${deviceId}`);
+      throw new Error(`Device key not found for: ${keyIdOrDeviceId}`);
     }
 
     return Buffer.from(deviceKeyB64, 'base64');
@@ -1060,6 +1160,23 @@ async function deviceCommand(context) {
           throw new Error('Password is required for keychain operations');
         }
 
+        // Confirmation - only if this looks like initial setup (not unlock)
+        if (
+          promptText.toLowerCase().includes('create') ||
+          promptText.toLowerCase().includes('new')
+        ) {
+          const confirmResponse = await prompts({
+            type: 'password',
+            name: 'password',
+            message: 'Confirm password:',
+            validate: (value) => (value === response.password ? true : 'Passwords do not match'),
+          });
+
+          if (!confirmResponse.password) {
+            throw new Error('Password confirmation is required');
+          }
+        }
+
         return response.password;
       },
     };
@@ -1069,6 +1186,13 @@ async function deviceCommand(context) {
 
     console.log(chalk.white('🔐 Initializing Ident SDK...'));
 
+    // Create device key storage provider for the SDK
+    const deviceKeyStorageProvider = await createDeviceKeyStorageProvider();
+    console.log(chalk.blue('🔧 Creating SDK with device storage provider:', !!deviceKeyStorageProvider));
+    if (context.flags.debug) {
+      console.log(chalk.blue('🔧 Device key storage provider created:', !!deviceKeyStorageProvider));
+    }
+    
     // Create SDK client instance
     const client = IdentClient.create({
       apiBaseUrl,
@@ -1076,6 +1200,7 @@ async function deviceCommand(context) {
       scopes: ['user', 'vault.read', 'vault.write', 'vault.decrypt'],
       passwordProvider,
       deviceKeyProvider: createDeviceKeyProvider(),
+      deviceKeyStorageProvider,
       sshKeyProvider: createSSHKeyProvider(context.flags.sshKey),
       debug: context.flags.debug,
     });
@@ -1145,10 +1270,18 @@ async function deviceCommand(context) {
     // Initialize secrets provider
     const secrets = await getSecretProvider();
     const service = 'ident-agency-cli';
-    const key = `device-key-${deviceId}`;
+    // Include user subject hash in the device ID to make it unique per user
+    const userHash = session.subject.hash;
+    const userScopedDeviceId = `${deviceId}-${userHash}`;
+    
+    // Create a unique key ID with timestamp to avoid collisions
+    const timestamp = Date.now();
+    const uniqueKeyId = `device:${userScopedDeviceId}:${timestamp}`;
+    const key = `device-key-${uniqueKeyId}`;
 
-    // Check if device key already exists
-    const existingKey = await secrets.get(service, key);
+    // Check if any device key already exists for this user (check old format)
+    const oldKey = `device-key-${userScopedDeviceId}`;
+    const existingKey = await secrets.get(service, oldKey);
 
     if (existingKey) {
       console.log(chalk.yellow('⚠️  Device key already exists for this device'));
@@ -1175,24 +1308,20 @@ async function deviceCommand(context) {
     const deviceKey = randomBytes(32);
     const deviceKeyB64 = deviceKey.toString('base64');
 
-    // Store device key using secrets abstraction
+    // Store device key using secrets abstraction with full keyId
     await secrets.set(service, key, deviceKeyB64);
     console.log(chalk.green('✅ Device key stored in secure storage'));
 
     // Add device unlock method to SDK keychain
     console.log(chalk.white('📝 Adding device unlock method to keychain...'));
 
-    // Create a unique key ID to avoid replacing existing devices
-    const timestamp = Date.now();
-    const uniqueKeyId = `device:${deviceId}:${timestamp}`;
-
     const wrappedSeed = await client.addUnlockMethod('device', {
       dkBytes: deviceKey, // Provide raw device key bytes
-      deviceId,
+      deviceId: userScopedDeviceId, // Use user-scoped device ID
       platform,
       secureStore,
       description: deviceDescription,
-      keyId: uniqueKeyId, // Use unique key ID to prevent replacement
+      keyId: uniqueKeyId, // Use the same unique key ID that was used for storage
     });
 
     console.log(chalk.green('✅ Device unlock method added to keychain'));
@@ -1358,6 +1487,13 @@ async function recoveryCommand(context) {
 
     console.log(chalk.white('🔐 Initializing Ident SDK...'));
 
+    // Create device key storage provider for the SDK
+    const deviceKeyStorageProvider = await createDeviceKeyStorageProvider();
+    console.log(chalk.blue('🔧 Creating SDK with device storage provider:', !!deviceKeyStorageProvider));
+    if (context.flags.debug) {
+      console.log(chalk.blue('🔧 Device key storage provider created:', !!deviceKeyStorageProvider));
+    }
+    
     // Create SDK client instance
     const client = IdentClient.create({
       apiBaseUrl,
@@ -1365,6 +1501,7 @@ async function recoveryCommand(context) {
       scopes: ['user', 'vault.read', 'vault.write', 'vault.decrypt'],
       passwordProvider,
       deviceKeyProvider: createDeviceKeyProvider(),
+      deviceKeyStorageProvider,
       sshKeyProvider: createSSHKeyProvider(context.flags.sshKey),
       debug: context.flags.debug,
     });
@@ -1595,6 +1732,13 @@ async function sshCommand(context) {
 
     console.log(chalk.white('🔐 Initializing Ident SDK...'));
 
+    // Create device key storage provider for the SDK
+    const deviceKeyStorageProvider = await createDeviceKeyStorageProvider();
+    console.log(chalk.blue('🔧 Creating SDK with device storage provider:', !!deviceKeyStorageProvider));
+    if (context.flags.debug) {
+      console.log(chalk.blue('🔧 Device key storage provider created:', !!deviceKeyStorageProvider));
+    }
+    
     // Create SDK client instance
     const client = IdentClient.create({
       apiBaseUrl,
@@ -1602,6 +1746,7 @@ async function sshCommand(context) {
       scopes: ['user', 'vault.read', 'vault.write', 'vault.decrypt'],
       passwordProvider,
       deviceKeyProvider: createDeviceKeyProvider(),
+      deviceKeyStorageProvider,
       sshKeyProvider: createSSHKeyProvider(context.flags.sshKey),
       debug: context.flags.debug,
     });

@@ -4,20 +4,34 @@ import prompts from 'prompts';
 import config from '../lib/config.js';
 import { resolveApiBaseUrl } from '../lib/api-url.js';
 import { getSecretProvider } from '../lib/secrets.js';
+import { createDeviceKeyStorageProvider } from '../lib/device-key-storage.js';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
 // Create a device key provider function for CLI
 function createDeviceKeyProvider() {
-  return async (deviceId) => {
+  return async (keyIdOrDeviceId) => {
     const secrets = await getSecretProvider();
     const service = 'ident-agency-cli';
-    const key = `device-key-${deviceId}`;
     
-    const deviceKeyB64 = await secrets.get(service, key);
+    // Try to get device key using the full keyId first (new format)
+    // Format: "device:xxx-xxx:timestamp"
+    let key = `device-key-${keyIdOrDeviceId}`;
+    let deviceKeyB64 = await secrets.get(service, key);
+    
+    // If not found and it looks like a keyId, try extracting just the device ID (old format)
+    if (!deviceKeyB64 && keyIdOrDeviceId.startsWith('device:')) {
+      const parts = keyIdOrDeviceId.split(':');
+      if (parts.length >= 2) {
+        const userScopedDeviceId = parts[1]; // This is the userScopedDeviceId
+        key = `device-key-${userScopedDeviceId}`;
+        deviceKeyB64 = await secrets.get(service, key);
+      }
+    }
+    
     if (!deviceKeyB64) {
-      throw new Error(`Device key not found for device ID: ${deviceId}`);
+      throw new Error(`Device key not found for: ${keyIdOrDeviceId}`);
     }
     
     return Buffer.from(deviceKeyB64, 'base64');
@@ -211,6 +225,9 @@ export const exec = async (context) => {
   // Resolve API base URL with fallback logic: flag -> config -> production default
   const apiBaseUrl = resolveApiBaseUrl(context.flags.apiUrl, context.flags.debug);
 
+  // Create device key storage provider for the SDK
+  const deviceKeyStorageProvider = await createDeviceKeyStorageProvider();
+
   // Create SDK client instance
   const sshProvider = createSSHKeyProvider(context.flags.sshKey);
   if (context.flags.debug) {
@@ -226,6 +243,7 @@ export const exec = async (context) => {
     scopes: ['profile', 'vault.read', 'vault.write', 'vault.decrypt'],
     passwordProvider,
     deviceKeyProvider: createDeviceKeyProvider(),
+    deviceKeyStorageProvider,
     sshKeyProvider: sshProvider,
     debug: context.flags.debug,
   });
