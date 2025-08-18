@@ -4,3 +4,4 @@ tmp
 *.log
 logs
 .env
+test-*

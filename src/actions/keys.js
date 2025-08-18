@@ -77,7 +77,7 @@ export const exec = async (context) => {
       console.error('  list       List available authentication keys in keychain');
       console.error('  remove     Remove an authentication key from keychain');
       console.error(
-        '  test       Test an authentication key (password, device, and recovery in CLI)'
+        '  test       Test an authentication key (password, device, recovery, and SSH in CLI)'
       );
       console.error('  device     Generate and register a device-specific unlock key');
       console.error('  recovery   Generate or import a BIP-39 mnemonic for recovery');
@@ -259,12 +259,25 @@ async function listCommand(context) {
               ? '🔄'
               : method.method === 'device'
               ? '💻'
+              : method.method === 'ssh'
+              ? '🔐'
               : '❓';
 
-          // Display method name with description for devices
+          // Display method name with description for devices and SSH
           let methodName = method.method;
           if (method.method === 'device' && method.device?.description) {
             methodName = `device - ${method.device.description}`;
+          } else if (method.method === 'ssh') {
+            // Try to extract comment or fingerprint from keyId or params
+            if (method.comment) {
+              methodName = `ssh - ${method.comment}`;
+            } else if (method.fingerprint_sha256) {
+              // Show truncated fingerprint
+              const fp = method.fingerprint_sha256.replace('SHA256:', '').substring(0, 12);
+              methodName = `ssh - ${fp}...`;
+            } else {
+              methodName = 'ssh';
+            }
           }
 
           console.log(chalk.white(`   ${index + 1}. ${icon} ${methodName}`));
@@ -441,8 +454,12 @@ async function removeCommand(context) {
           ? '🔒'
           : m.method.startsWith('passkey')
           ? '🔑'
+          : m.method === 'recovery'
+          ? '🔄'
           : m.method === 'device'
           ? '💻'
+          : m.method === 'ssh'
+          ? '🔐'
           : '❓';
       console.log(chalk.white(`   ${index + 1}. ${icon} ${m.method} (${m.keyId})`));
     });
@@ -685,10 +702,10 @@ async function testCommand(context) {
       process.exit(1);
     }
 
-    if (method !== 'password' && method !== 'device' && method !== 'recovery') {
+    if (method !== 'password' && method !== 'device' && method !== 'recovery' && method !== 'ssh') {
       console.error(chalk.red(`❌ Testing method '${method}' is not supported in CLI`));
       console.error(
-        chalk.white('   Only password, device, and recovery testing is supported in CLI')
+        chalk.white('   Only password, device, recovery, and SSH testing is supported in CLI')
       );
       process.exit(1);
     }
@@ -823,6 +840,31 @@ async function testCommand(context) {
       // For recovery method, test the specific mnemonic
       const success = await testRecoveryMethod(client, targetMethod, context);
       if (!success) {
+        process.exit(1);
+      }
+    } else if (method === 'ssh') {
+      // For SSH method, test the SSH key unlock
+      try {
+        console.log(chalk.white('🔑 Testing SSH key unlock method...'));
+        console.log(chalk.white(`   Method: ${targetMethod.displayName}`));
+        console.log(chalk.white(`   Key ID: ${targetMethod.keyId}`));
+        
+        // Lock the keychain first to ensure we're testing the unlock
+        if (client.cryptoManager.userKEK) {
+          client.cryptoManager.userKEK = null;
+          console.log(chalk.white('   Locked keychain to test SSH unlock'));
+        }
+        
+        // Test SSH unlock - the provider will handle key location
+        await client.unlockWithMethod(targetMethod.keyId || 'ssh');
+        
+        console.log(chalk.green('✅ SSH unlock method test successful'));
+        console.log(chalk.white('   SSH key was found and successfully unlocked keychain'));
+      } catch (error) {
+        console.error(chalk.red('❌ SSH unlock test failed:'), error.message);
+        if (context.flags.debug) {
+          console.error(error);
+        }
         process.exit(1);
       }
     }
