@@ -77,7 +77,7 @@ export const exec = async (context) => {
       console.error('  list       List available authentication keys in keychain');
       console.error('  remove     Remove an authentication key from keychain');
       console.error(
-        '  test       Test an authentication key (all methods supported, passkey via browser)'
+        '  test       Test an authentication key (passkey testing uses browser consent flow)'
       );
       console.error('  device     Generate and register a device-specific unlock key');
       console.error('  recovery   Generate or import a BIP-39 mnemonic for recovery');
@@ -665,14 +665,14 @@ async function testCommand(context) {
           displayName = `${icon} device - ${method.device.description}`;
         }
         
-        // Mark if method requires browser
+        // Mark if method uses browser consent flow
         const isTestableInCLI = method.method === 'password' || 
                                 method.method === 'device' || 
                                 method.method === 'recovery' || 
                                 method.method === 'ssh' ||
                                 method.method.startsWith('passkey');
         if (method.method.startsWith('passkey')) {
-          displayName += chalk.gray(' (browser required)');
+          displayName += chalk.gray(' (via browser)');
         }
 
         return {
@@ -716,11 +716,11 @@ async function testCommand(context) {
       process.exit(1);
     }
     
-    // For passkey methods, inform that browser is required
+    // For passkey methods, inform that browser will be used
     if (method.startsWith('passkey')) {
-      console.log(chalk.yellow('⚠️  Passkey validation check'));
-      console.log(chalk.white('   Note: Full passkey testing requires a browser with WebAuthn'));
-      console.log(chalk.white('   The CLI will verify the passkey configuration is valid'));
+      console.log(chalk.yellow('⚠️  Passkey testing will use browser authentication'));
+      console.log(chalk.white('   A browser window will open for WebAuthn authentication'));
+      console.log(chalk.white('   Please complete the authentication in the browser'));
     }
 
     // Get available methods to find the target
@@ -881,22 +881,32 @@ async function testCommand(context) {
         process.exit(1);
       }
     } else if (method.startsWith('passkey')) {
-      // For passkey methods, we can't directly test in CLI
-      console.log(chalk.yellow('⚠️  Passkey testing requires a browser environment'));
-      console.log(chalk.white(`   Method: ${targetMethod.method}`));
-      console.log(chalk.white(`   Key ID: ${targetMethod.keyId}`));
-      console.log(chalk.white(''));
-      console.log(chalk.white('   Passkeys use WebAuthn which requires:'));
-      console.log(chalk.white('   • Browser environment with WebAuthn support'));
-      console.log(chalk.white('   • User interaction for biometric/security key authentication'));
-      console.log(chalk.white(''));
-      console.log(chalk.white('   To test this passkey:'));
-      console.log(chalk.white(`   1. Open ${apiBaseUrl}/example in your browser`));
-      console.log(chalk.white('   2. Click "Get Fragment" to trigger unlock'));
-      console.log(chalk.white('   3. Select this passkey when prompted'));
-      console.log(chalk.white('   4. Complete WebAuthn authentication'));
-      console.log(chalk.white(''));
-      console.log(chalk.green('✅ Passkey method exists and is configured correctly'));
+      // For passkey methods, use the SDK's consent flow
+      try {
+        console.log(chalk.white('🔑 Testing passkey unlock method via consent flow...'));
+        console.log(chalk.white(`   Method: ${targetMethod.method}`));
+        console.log(chalk.white(`   Key ID: ${targetMethod.keyId}`));
+        
+        // Lock the keychain first to ensure we're testing the unlock
+        if (client.cryptoManager && client.cryptoManager.userKEK) {
+          client.cryptoManager.userKEK = null;
+          console.log(chalk.white('   Locked keychain to test passkey unlock'));
+        }
+        
+        // Use the SDK's unlockWithMethod which handles consent flow for passkeys
+        console.log(chalk.white('   Using SDK consent flow for passkey authentication...'));
+        await client.unlockWithMethod(targetMethod.keyId);
+        
+        console.log(chalk.green('✅ Passkey unlock method test successful'));
+        console.log(chalk.white('   Passkey authentication completed in browser'));
+        console.log(chalk.white('   Keychain successfully unlocked'));
+      } catch (error) {
+        console.error(chalk.red('❌ Passkey unlock test failed:'), error.message);
+        if (context.flags.debug) {
+          console.error(error);
+        }
+        process.exit(1);
+      }
     }
   } catch (error) {
     console.error(chalk.red('❌ Failed to test unlock method:'), error.message);
