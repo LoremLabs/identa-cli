@@ -1,12 +1,13 @@
 import { createHash, randomBytes } from 'crypto';
+import { decodeBase64Url, encodeBase64Url } from '../lib/bytes.js';
 
 import { IdentClient } from '../../../ident-agency-sdk/lib-js/index.js';
 import chalk from 'chalk';
 import config from '../lib/config.js';
+import { createDeviceKeyStorageProvider } from '../lib/device-key-storage.js';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import { getSecretProvider } from '../lib/secrets.js';
-import { createDeviceKeyStorageProvider } from '../lib/device-key-storage.js';
 import os from 'os';
 import path from 'path';
 import prompts from 'prompts';
@@ -86,7 +87,9 @@ export const exec = async (context) => {
       console.error('');
       console.error('Global Flags:');
       console.error('  --api-url  API base URL (default: config or https://www.ident.agency)');
-      console.error('  --ssh-key  Path to SSH private key (default: ~/.ssh/id_ed25519 or ~/.ssh/id_rsa)');
+      console.error(
+        '  --ssh-key  Path to SSH private key (default: ~/.ssh/id_ed25519 or ~/.ssh/id_rsa)'
+      );
       console.error('  --debug    Enable debug output');
       console.error('  --yes      Skip confirmation prompts (auto-confirm)');
       process.exit(1);
@@ -141,11 +144,7 @@ async function registerCommand(context) {
 
     // Create device key storage provider for the SDK
     const deviceKeyStorageProvider = await createDeviceKeyStorageProvider();
-    console.log(chalk.blue('🔧 Creating SDK with device storage provider:', !!deviceKeyStorageProvider));
-    if (context.flags.debug) {
-      console.log(chalk.blue('🔧 Device key storage provider created:', !!deviceKeyStorageProvider));
-    }
-    
+
     // Create SDK client instance
     const client = IdentClient.create({
       apiBaseUrl,
@@ -749,13 +748,14 @@ async function testCommand(context) {
         if (method.method === 'device' && method.device?.description) {
           displayName = `${icon} device - ${method.device.description}`;
         }
-        
+
         // Mark if method uses browser consent flow
-        const isTestableInCLI = method.method === 'password' || 
-                                method.method === 'device' || 
-                                method.method === 'recovery' || 
-                                method.method === 'ssh' ||
-                                method.method.startsWith('passkey');
+        const isTestableInCLI =
+          method.method === 'password' ||
+          method.method === 'device' ||
+          method.method === 'recovery' ||
+          method.method === 'ssh' ||
+          method.method.startsWith('passkey');
         if (method.method.startsWith('passkey')) {
           displayName += chalk.gray(' (via browser)');
         }
@@ -787,20 +787,19 @@ async function testCommand(context) {
     }
 
     // Check if method is supported in CLI
-    const isTestableInCLI = method === 'password' || 
-                            method === 'device' || 
-                            method === 'recovery' || 
-                            method === 'ssh' ||
-                            method.startsWith('passkey');
-    
+    const isTestableInCLI =
+      method === 'password' ||
+      method === 'device' ||
+      method === 'recovery' ||
+      method === 'ssh' ||
+      method.startsWith('passkey');
+
     if (!isTestableInCLI) {
       console.error(chalk.red(`❌ Testing method '${method}' is not supported in CLI`));
-      console.error(
-        chalk.white('   Supported methods: password, device, recovery, ssh, passkey')
-      );
+      console.error(chalk.white('   Supported methods: password, device, recovery, ssh, passkey'));
       process.exit(1);
     }
-    
+
     // For passkey methods, inform that browser will be used
     if (method.startsWith('passkey')) {
       console.log(chalk.yellow('⚠️  Passkey testing will use browser authentication'));
@@ -948,16 +947,16 @@ async function testCommand(context) {
         console.log(chalk.white('🔑 Testing SSH key unlock method...'));
         console.log(chalk.white(`   Method: ${targetMethod.method}`));
         console.log(chalk.white(`   Key ID: ${targetMethod.keyId}`));
-        
+
         // Lock the keychain first to ensure we're testing the unlock
         if (client.cryptoManager.userKEK) {
           client.cryptoManager.userKEK = null;
           console.log(chalk.white('   Locked keychain to test SSH unlock'));
         }
-        
+
         // Test SSH unlock - the provider will handle key location
         await client.unlockWithMethod(targetMethod.keyId || 'ssh');
-        
+
         console.log(chalk.green('✅ SSH unlock method test successful'));
         console.log(chalk.white('   SSH key was found and successfully unlocked keychain'));
       } catch (error) {
@@ -973,17 +972,17 @@ async function testCommand(context) {
         console.log(chalk.white('🔑 Testing passkey unlock method via consent flow...'));
         console.log(chalk.white(`   Method: ${targetMethod.method}`));
         console.log(chalk.white(`   Key ID: ${targetMethod.keyId}`));
-        
+
         // Lock the keychain first to ensure we're testing the unlock
         if (client.cryptoManager && client.cryptoManager.userKEK) {
           client.cryptoManager.userKEK = null;
           console.log(chalk.white('   Locked keychain to test passkey unlock'));
         }
-        
+
         // Use the SDK's unlockWithMethod which handles consent flow for passkeys
         console.log(chalk.white('   Using SDK consent flow for passkey authentication...'));
         await client.unlockWithMethod(targetMethod.keyId);
-        
+
         console.log(chalk.green('✅ Passkey unlock method test successful'));
         console.log(chalk.white('   Passkey authentication completed in browser'));
         console.log(chalk.white('   Keychain successfully unlocked'));
@@ -1042,27 +1041,27 @@ function createDeviceKeyProvider() {
   return async (keyIdOrDeviceId) => {
     const secrets = await getSecretProvider();
     const service = 'ident-agency-cli';
-    
+
     // Try to get device key using the full keyId first (new format)
     // Format: "device:xxx-xxx:timestamp"
     let key = `device-key-${keyIdOrDeviceId}`;
-    let deviceKeyB64 = await secrets.get(service, key);
-    
-    // If not found and it looks like a keyId, try extracting just the device ID (old format)
-    if (!deviceKeyB64 && keyIdOrDeviceId.startsWith('device:')) {
-      const parts = keyIdOrDeviceId.split(':');
-      if (parts.length >= 2) {
-        const userScopedDeviceId = parts[1]; // This is the userScopedDeviceId
-        key = `device-key-${userScopedDeviceId}`;
-        deviceKeyB64 = await secrets.get(service, key);
-      }
-    }
-    
-    if (!deviceKeyB64) {
+
+    console.log(chalk.gray(`🔐 Retrieving device key for: ${key}`));
+
+    let deviceKeyB64url = await secrets.get(service, key);
+
+    if (!deviceKeyB64url) {
       throw new Error(`Device key not found for: ${keyIdOrDeviceId}`);
     }
 
-    return Buffer.from(deviceKeyB64, 'base64');
+    const decoded = decodeBase64Url(deviceKeyB64url);
+    if (decoded.length !== 32) {
+      throw new Error('Invalid device key length retrieved from secure storage');
+    }
+    console.log(
+      chalk.gray('🔐 Device key retrieved successfully:', Buffer.from(decoded).toString('hex'))
+    );
+    return Buffer.from(decoded);
   };
 }
 
@@ -1073,14 +1072,14 @@ function createSSHKeyProvider(customKeyPath) {
     // First try the default location
     const defaultKeyPath = path.join(os.homedir(), '.ssh', 'id_ed25519');
     const rsaKeyPath = path.join(os.homedir(), '.ssh', 'id_rsa');
-    
+
     let keyPath;
-    
+
     // If custom key path provided via flag, use it
     if (customKeyPath) {
       // Expand ~ to home directory if present
       keyPath = customKeyPath.replace(/^~/, os.homedir());
-      
+
       if (!fsSync.existsSync(keyPath)) {
         console.error(chalk.red(`❌ SSH key not found at: ${keyPath}`));
         // Fall back to prompting
@@ -1088,7 +1087,7 @@ function createSSHKeyProvider(customKeyPath) {
           type: 'text',
           name: 'keyPath',
           message: 'Enter path to SSH private key:',
-          initial: defaultKeyPath
+          initial: defaultKeyPath,
         });
         if (!response.keyPath) {
           throw new Error('SSH key path is required');
@@ -1108,7 +1107,7 @@ function createSSHKeyProvider(customKeyPath) {
             type: 'text',
             name: 'keyPath',
             message: 'Enter path to SSH private key:',
-            initial: defaultKeyPath
+            initial: defaultKeyPath,
           });
           if (!response.keyPath) {
             throw new Error('SSH key path is required');
@@ -1117,26 +1116,26 @@ function createSSHKeyProvider(customKeyPath) {
         }
       }
     }
-    
+
     // Verify the key exists before trying to read it
     if (!fsSync.existsSync(keyPath)) {
       throw new Error(`SSH key not found at: ${keyPath}`);
     }
-    
+
     // Read the private key
     const privateKey = fsSync.readFileSync(keyPath, 'utf8');
-    
+
     // Check if passphrase is needed
     let passphrase;
     if (privateKey.includes('ENCRYPTED')) {
       const response = await prompts({
         type: 'password',
         name: 'passphrase',
-        message: `Enter passphrase for SSH key (${path.basename(keyPath)}):`
+        message: `Enter passphrase for SSH key (${path.basename(keyPath)}):`,
       });
       passphrase = response.passphrase;
     }
-    
+
     return { privateKey, passphrase };
   };
 }
@@ -1188,11 +1187,7 @@ async function deviceCommand(context) {
 
     // Create device key storage provider for the SDK
     const deviceKeyStorageProvider = await createDeviceKeyStorageProvider();
-    console.log(chalk.blue('🔧 Creating SDK with device storage provider:', !!deviceKeyStorageProvider));
-    if (context.flags.debug) {
-      console.log(chalk.blue('🔧 Device key storage provider created:', !!deviceKeyStorageProvider));
-    }
-    
+
     // Create SDK client instance
     const client = IdentClient.create({
       apiBaseUrl,
@@ -1255,6 +1250,13 @@ async function deviceCommand(context) {
     console.log(chalk.white(`   Secure Store: ${secureStore}`));
     console.log('');
 
+    // Initialize secrets provider
+    const secrets = await getSecretProvider();
+    const service = 'ident-agency-cli';
+    // Include user subject hash in the device ID to make it unique per user
+    const userHash = session.subject.hash;
+    const userScopedDeviceId = `${deviceId}-${userHash}`;
+
     // Ask for device description
     const descriptionResponse = await prompts({
       type: 'text',
@@ -1267,49 +1269,41 @@ async function deviceCommand(context) {
     console.log(chalk.white(`   Description: ${deviceDescription}`));
     console.log('');
 
-    // Initialize secrets provider
-    const secrets = await getSecretProvider();
-    const service = 'ident-agency-cli';
-    // Include user subject hash in the device ID to make it unique per user
-    const userHash = session.subject.hash;
-    const userScopedDeviceId = `${deviceId}-${userHash}`;
-    
     // Create a unique key ID with timestamp to avoid collisions
     const timestamp = Date.now();
     const uniqueKeyId = `device:${userScopedDeviceId}:${timestamp}`;
     const key = `device-key-${uniqueKeyId}`;
 
-    // Check if any device key already exists for this user (check old format)
-    const oldKey = `device-key-${userScopedDeviceId}`;
-    const existingKey = await secrets.get(service, oldKey);
-
-    if (existingKey) {
-      console.log(chalk.yellow('⚠️  Device key already exists for this device'));
-
-      if (context.flags.yes) {
-        console.log(chalk.white('   --yes flag provided, replacing existing device key'));
-      } else {
-        const replaceResponse = await prompts({
-          type: 'confirm',
-          name: 'replace',
-          message: 'Replace existing device key?',
-          initial: false,
-        });
-
-        if (!replaceResponse.replace) {
-          console.log(chalk.yellow('⚠️  Device key generation cancelled'));
-          process.exit(0);
-        }
-      }
-    }
+    // Ensure the keychain is unlocked before adding device key
+    console.log(chalk.white('🔓 Ensuring keychain is unlocked...'));
+    await client.ensureAuthenticated(['user']);
+    console.log(chalk.green('✅ Keychain unlocked'));
+    console.log('');
 
     // Generate new device key (32 random bytes)
     console.log(chalk.white('🔑 Generating device key...'));
     const deviceKey = randomBytes(32);
-    const deviceKeyB64 = deviceKey.toString('base64');
+    const deviceKeyB64url = encodeBase64Url(deviceKey);
+
+    if (context.flags.debug) {
+      console.log(chalk.blue(`🔧 Generated device key: ${deviceKey.toString('hex')}`));
+      console.log(chalk.blue(`🔧 Storage key: ${key}`));
+    }
 
     // Store device key using secrets abstraction with full keyId
-    await secrets.set(service, key, deviceKeyB64);
+    await secrets.set(service, key, deviceKeyB64url);
+    const reread = await secrets.get(service, key);
+    if (reread !== deviceKeyB64url) {
+      console.error(chalk.red('❌ Failed to store device key securely'), {
+        expected: deviceKeyB64url,
+        actual: reread,
+      });
+      throw new Error('Failed to store device key securely');
+    }
+    console.error(chalk.red('device key securely'), {
+      expected: deviceKeyB64url,
+      actual: reread,
+    });
     console.log(chalk.green('✅ Device key stored in secure storage'));
 
     // Add device unlock method to SDK keychain
@@ -1489,11 +1483,7 @@ async function recoveryCommand(context) {
 
     // Create device key storage provider for the SDK
     const deviceKeyStorageProvider = await createDeviceKeyStorageProvider();
-    console.log(chalk.blue('🔧 Creating SDK with device storage provider:', !!deviceKeyStorageProvider));
-    if (context.flags.debug) {
-      console.log(chalk.blue('🔧 Device key storage provider created:', !!deviceKeyStorageProvider));
-    }
-    
+
     // Create SDK client instance
     const client = IdentClient.create({
       apiBaseUrl,
@@ -1734,11 +1724,7 @@ async function sshCommand(context) {
 
     // Create device key storage provider for the SDK
     const deviceKeyStorageProvider = await createDeviceKeyStorageProvider();
-    console.log(chalk.blue('🔧 Creating SDK with device storage provider:', !!deviceKeyStorageProvider));
-    if (context.flags.debug) {
-      console.log(chalk.blue('🔧 Device key storage provider created:', !!deviceKeyStorageProvider));
-    }
-    
+
     // Create SDK client instance
     const client = IdentClient.create({
       apiBaseUrl,

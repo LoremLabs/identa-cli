@@ -5,17 +5,17 @@ import config from './config.js';
  * 1. --api-url flag (highest priority)
  * 2. apiBaseUrl in config file
  * 3. Production default: https://www.ident.agency
- * 
+ *
  * @param {string} [flagValue] - Value from --api-url flag
  * @param {boolean} [debug=false] - Whether to log debug information
  * @returns {string} The resolved API base URL
  */
 export function resolveApiBaseUrl(flagValue, debug = false) {
   const PRODUCTION_URL = 'https://www.ident.agency';
-  
+
   let resolvedUrl;
   let source;
-  
+
   if (flagValue) {
     // 1. Flag takes highest priority
     resolvedUrl = flagValue;
@@ -29,14 +29,14 @@ export function resolveApiBaseUrl(flagValue, debug = false) {
     resolvedUrl = PRODUCTION_URL;
     source = 'default';
   }
-  
+
   // Ensure URL doesn't have trailing slash
   resolvedUrl = resolvedUrl.replace(/\/$/, '');
-  
+
   if (debug) {
     console.log(`🔧 API URL: ${resolvedUrl} (from ${source})`);
   }
-  
+
   return resolvedUrl;
 }
 

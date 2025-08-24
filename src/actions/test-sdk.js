@@ -80,26 +80,28 @@ export const exec = async (context) => {
     // Add unlock method selection handler
     client.on('unlock_method_selection', (data) => {
       const { methods, resolve, reject } = data;
-      
+
       console.log(chalk.blue('🔐 Multiple unlock methods available. Choose one:'));
       methods.forEach((method, index) => {
-        const displayText = method.detail 
+        const displayText = method.detail
           ? `${method.displayName} ${chalk.gray(`(${method.detail})`)}`
           : method.displayName;
         console.log(chalk.white(`   ${index + 1}. ${displayText}`));
       });
-      
+
       prompts({
         type: 'number',
         name: 'choice',
         message: 'Select unlock method',
         min: 1,
         max: methods.length,
-        initial: 1
-      }).then(answer => {
-        const selectedMethod = methods[answer.choice - 1];
-        resolve(selectedMethod.id);
-      }).catch(reject);
+        initial: 1,
+      })
+        .then((answer) => {
+          const selectedMethod = methods[answer.choice - 1];
+          resolve(selectedMethod.id);
+        })
+        .catch(reject);
     });
 
     // Step 2: Authenticate

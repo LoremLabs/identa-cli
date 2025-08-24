@@ -11,12 +11,12 @@ function createDeviceKeyProvider() {
   return async (keyIdOrDeviceId) => {
     const secrets = await getSecretProvider();
     const service = 'ident-agency-cli';
-    
+
     // Try to get device key using the full keyId first (new format)
     // Format: "device:xxx-xxx:timestamp"
     let key = `device-key-${keyIdOrDeviceId}`;
     let deviceKeyB64 = await secrets.get(service, key);
-    
+
     // If not found and it looks like a keyId, try extracting just the device ID (old format)
     if (!deviceKeyB64 && keyIdOrDeviceId.startsWith('device:')) {
       const parts = keyIdOrDeviceId.split(':');
@@ -26,16 +26,12 @@ function createDeviceKeyProvider() {
         deviceKeyB64 = await secrets.get(service, key);
       }
     }
-    
+
     if (!deviceKeyB64) {
       throw new Error(`Device key not found for: ${keyIdOrDeviceId}`);
     }
-    
+
     const deviceKey = Buffer.from(deviceKeyB64, 'base64');
-    console.log(`[Device Key Provider] Retrieved device key for: ${keyIdOrDeviceId}`);
-    console.log(`[Device Key Provider] Storage key used: ${key}`);
-    console.log(`[Device Key Provider] Device key (hex): ${deviceKey.toString('hex')}`);
-    console.log(`[Device Key Provider] Device key length: ${deviceKey.length}`);
     return deviceKey;
   };
 }
@@ -54,25 +50,27 @@ export const exec = async (context) => {
       await loginCommand(context);
       break;
     }
-    
+
     case 'logout': {
       await logoutCommand(context);
       break;
     }
-    
+
     case 'profile': {
       await profileCommand(context);
       break;
     }
-    
+
     case 'change-password': {
       await changePasswordCommand(context);
       break;
     }
-    
+
     default: {
       console.error('Usage:');
-      console.error(`  ${context.personality} auth login [--scope="user"] [--timeout=120] [--api-url=URL]`);
+      console.error(
+        `  ${context.personality} auth login [--scope="user"] [--timeout=120] [--api-url=URL]`
+      );
       console.error(`  ${context.personality} auth logout [--debug]`);
       console.error(`  ${context.personality} auth profile [--api-url=URL] [--debug]`);
       console.error(`  ${context.personality} auth change-password [--api-url=URL] [--debug]`);
@@ -450,7 +448,9 @@ async function changePasswordCommand(context) {
     }
 
     console.log(chalk.white('🔑 Starting password change...'));
-    console.log(chalk.gray('   This will update your keychain password while preserving all unlock methods.'));
+    console.log(
+      chalk.gray('   This will update your keychain password while preserving all unlock methods.')
+    );
 
     // Confirm the operation unless --force flag is used
     if (!context.flags.force) {
@@ -472,9 +472,10 @@ async function changePasswordCommand(context) {
 
     console.log(chalk.green('✅ Password changed successfully!'));
     console.log(chalk.white('   Your keychain has been updated with the new password.'));
-    console.log(chalk.white('   All other unlock methods (passkeys, device keys) remain unchanged.'));
+    console.log(
+      chalk.white('   All other unlock methods (passkeys, device keys) remain unchanged.')
+    );
     console.log(chalk.gray('   Use your new password for future keychain access.'));
-
   } catch (error) {
     console.error(chalk.red('❌ Password change failed:'), error.message);
     if (context.flags.debug) {

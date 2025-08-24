@@ -7,20 +7,20 @@ import { getSecretProvider } from './secrets.js';
 export async function createDeviceKeyStorageProvider() {
   const secrets = await getSecretProvider();
   const service = 'ident-agency-cli';
-  
+
   return {
     async get(key) {
       return await secrets.get(service, key);
     },
-    
+
     async set(key, value) {
       await secrets.set(service, key, value);
     },
-    
+
     async delete(key) {
       if (secrets.delete) {
         await secrets.delete(service, key);
       }
-    }
+    },
   };
 }

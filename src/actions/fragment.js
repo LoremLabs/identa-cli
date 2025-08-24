@@ -1,40 +1,38 @@
+import { decodeBase64Url, encodeBase64Url } from '../lib/bytes.js';
+
 import { IdentClient } from '../../../ident-agency-sdk/lib-js/index.js';
 import chalk from 'chalk';
-import prompts from 'prompts';
 import config from '../lib/config.js';
-import { resolveApiBaseUrl } from '../lib/api-url.js';
-import { getSecretProvider } from '../lib/secrets.js';
 import { createDeviceKeyStorageProvider } from '../lib/device-key-storage.js';
 import fs from 'fs';
-import path from 'path';
+import { getSecretProvider } from '../lib/secrets.js';
 import os from 'os';
+import path from 'path';
+import prompts from 'prompts';
+import { resolveApiBaseUrl } from '../lib/api-url.js';
 
 // Create a device key provider function for CLI
 function createDeviceKeyProvider() {
   return async (keyIdOrDeviceId) => {
     const secrets = await getSecretProvider();
     const service = 'ident-agency-cli';
-    
+
     // Try to get device key using the full keyId first (new format)
     // Format: "device:xxx-xxx:timestamp"
     let key = `device-key-${keyIdOrDeviceId}`;
     let deviceKeyB64 = await secrets.get(service, key);
-    
-    // If not found and it looks like a keyId, try extracting just the device ID (old format)
-    if (!deviceKeyB64 && keyIdOrDeviceId.startsWith('device:')) {
-      const parts = keyIdOrDeviceId.split(':');
-      if (parts.length >= 2) {
-        const userScopedDeviceId = parts[1]; // This is the userScopedDeviceId
-        key = `device-key-${userScopedDeviceId}`;
-        deviceKeyB64 = await secrets.get(service, key);
-      }
-    }
-    
+
     if (!deviceKeyB64) {
       throw new Error(`Device key not found for: ${keyIdOrDeviceId}`);
     }
-    
-    return Buffer.from(deviceKeyB64, 'base64');
+
+    console.log(
+      chalk.blue(
+        `🔐 Using device key from secure storage (${secrets.type()}): ${key} ${deviceKeyB64}`
+      )
+    );
+
+    return Buffer.from(decodeBase64Url(deviceKeyB64));
   };
 }
 
@@ -43,14 +41,14 @@ function createSSHKeyProvider(customKeyPath) {
   return async (keyId) => {
     const defaultKeyPath = path.join(os.homedir(), '.ssh', 'id_ed25519');
     const rsaKeyPath = path.join(os.homedir(), '.ssh', 'id_rsa');
-    
+
     let keyPath;
-    
+
     // If custom key path provided via flag, use it
     if (customKeyPath) {
       // Expand ~ to home directory if present
       keyPath = customKeyPath.replace(/^~/, os.homedir());
-      
+
       if (!fs.existsSync(keyPath)) {
         console.error(chalk.red(`❌ SSH key not found at: ${keyPath}`));
         // Fall back to prompting
@@ -58,7 +56,7 @@ function createSSHKeyProvider(customKeyPath) {
           type: 'text',
           name: 'keyPath',
           message: 'Enter path to SSH private key:',
-          initial: defaultKeyPath
+          initial: defaultKeyPath,
         });
         if (!response.keyPath) {
           throw new Error('SSH key path is required');
@@ -78,7 +76,7 @@ function createSSHKeyProvider(customKeyPath) {
             type: 'text',
             name: 'keyPath',
             message: 'Enter path to SSH private key:',
-            initial: defaultKeyPath
+            initial: defaultKeyPath,
           });
           if (!response.keyPath) {
             throw new Error('SSH key path is required');
@@ -87,24 +85,24 @@ function createSSHKeyProvider(customKeyPath) {
         }
       }
     }
-    
+
     // Verify the key exists before trying to read it
     if (!fs.existsSync(keyPath)) {
       throw new Error(`SSH key not found at: ${keyPath}`);
     }
-    
+
     const privateKey = fs.readFileSync(keyPath, 'utf8');
-    
+
     let passphrase;
     if (privateKey.includes('ENCRYPTED')) {
       const response = await prompts({
         type: 'password',
         name: 'passphrase',
-        message: `Enter passphrase for SSH key (${path.basename(keyPath)}):`
+        message: `Enter passphrase for SSH key (${path.basename(keyPath)}):`,
       });
       passphrase = response.passphrase;
     }
-    
+
     return { privateKey, passphrase };
   };
 }
@@ -143,17 +141,21 @@ export const exec = async (context) => {
   const passwordProvider = {
     async getPassword(promptText) {
       // First password entry
-      const response = await prompts({
-        type: 'password',
-        name: 'password',
-        message: promptText,
-        validate: (value) => (value.length >= 8 ? true : 'Password must be at least 8 characters'),
-      }, {
-        onCancel: () => {
-          console.log(chalk.yellow('\n⚠️  Operation cancelled.'));
-          process.exit(1);
+      const response = await prompts(
+        {
+          type: 'password',
+          name: 'password',
+          message: promptText,
+          validate: (value) =>
+            value.length >= 8 ? true : 'Password must be at least 8 characters',
+        },
+        {
+          onCancel: () => {
+            console.log(chalk.yellow('\n⚠️  Operation cancelled.'));
+            process.exit(1);
+          },
         }
-      });
+      );
 
       if (!response.password) {
         throw new Error('Password is required for keychain operations');
@@ -161,17 +163,20 @@ export const exec = async (context) => {
 
       // Confirmation - only if this looks like initial setup (not unlock)
       if (promptText.toLowerCase().includes('create') || promptText.toLowerCase().includes('new')) {
-        const confirmResponse = await prompts({
-          type: 'password',
-          name: 'password',
-          message: 'Confirm password:',
-          validate: (value) => (value === response.password ? true : 'Passwords do not match'),
-        }, {
-          onCancel: () => {
-            console.log(chalk.yellow('\n⚠️  Operation cancelled.'));
-            process.exit(1);
+        const confirmResponse = await prompts(
+          {
+            type: 'password',
+            name: 'password',
+            message: 'Confirm password:',
+            validate: (value) => (value === response.password ? true : 'Passwords do not match'),
+          },
+          {
+            onCancel: () => {
+              console.log(chalk.yellow('\n⚠️  Operation cancelled.'));
+              process.exit(1);
+            },
           }
-        });
+        );
 
         if (!confirmResponse.password) {
           throw new Error('Password confirmation is required');
@@ -182,16 +187,19 @@ export const exec = async (context) => {
     },
     async getText(promptText) {
       // Text input (not hidden like password)
-      const response = await prompts({
-        type: 'text',
-        name: 'text',
-        message: promptText,
-      }, {
-        onCancel: () => {
-          console.log(chalk.yellow('\n⚠️  Operation cancelled.'));
-          process.exit(1);
+      const response = await prompts(
+        {
+          type: 'text',
+          name: 'text',
+          message: promptText,
+        },
+        {
+          onCancel: () => {
+            console.log(chalk.yellow('\n⚠️  Operation cancelled.'));
+            process.exit(1);
+          },
         }
-      });
+      );
 
       if (!response.text) {
         throw new Error('Text input is required');
@@ -236,11 +244,11 @@ export const exec = async (context) => {
       console.log(chalk.blue('🔧 Custom SSH key path:', context.flags.sshKey));
     }
   }
-  
+
   const client = IdentClient.create({
     apiBaseUrl,
     clientId: 'ident-cli',
-    scopes: ['profile', 'vault.read', 'vault.write', 'vault.decrypt'],
+    scopes: ['user'],
     passwordProvider,
     deviceKeyProvider: createDeviceKeyProvider(),
     deviceKeyStorageProvider,
@@ -270,15 +278,15 @@ export const exec = async (context) => {
     // Add unlock method selection handler
     client.on('unlock_method_selection', (data) => {
       const { methods, resolve, reject } = data;
-      
+
       console.log(chalk.blue('🔐 Multiple unlock methods available. Choose one:'));
       methods.forEach((method, index) => {
-        const displayText = method.detail 
+        const displayText = method.detail
           ? `${method.displayName} ${chalk.gray(`(${method.detail})`)}`
           : method.displayName;
         console.log(chalk.white(`   ${index + 1}. ${displayText}`));
       });
-      
+
       prompts({
         type: 'number',
         name: 'choice',
@@ -290,18 +298,20 @@ export const exec = async (context) => {
             return `Please enter a number between 1 and ${methods.length}`;
           }
           return true;
-        }
-      }).then((response) => {
-        if (!response.choice) {
-          reject(new Error('No unlock method selected'));
-        } else {
-          const selectedMethod = methods[response.choice - 1];
-          console.log(chalk.white(`✅ Selected: ${selectedMethod.displayName}`));
-          resolve(selectedMethod.id);
-        }
-      }).catch((error) => {
-        reject(error);
-      });
+        },
+      })
+        .then((response) => {
+          if (!response.choice) {
+            reject(new Error('No unlock method selected'));
+          } else {
+            const selectedMethod = methods[response.choice - 1];
+            console.log(chalk.white(`✅ Selected: ${selectedMethod.displayName}`));
+            resolve(selectedMethod.id);
+          }
+        })
+        .catch((error) => {
+          reject(error);
+        });
     });
 
     // For write operations, always require authentication (with current user scopes)
@@ -314,6 +324,10 @@ export const exec = async (context) => {
   }
 
   switch (subcommand) {
+    case 'raw': {
+      // Alias for get --raw, set the raw flag and fall through
+      context.flags.raw = true;
+    }
     case 'get': {
       if (!path) {
         console.error(
@@ -368,15 +382,19 @@ export const exec = async (context) => {
         }
 
         if (usePublicAccess) {
-          console.log(chalk.white(`🔍 Getting public fragment: ${path}`));
-          console.log(chalk.gray(`   From subject: ${subjectToUse}`));
-          if (version !== undefined) {
-            console.log(chalk.gray(`   Version: ${version}`));
+          if (context.flags.debug) {
+            console.log(chalk.white(`🔍 Getting public fragment: ${path}`));
+            console.log(chalk.gray(`   From subject: ${subjectToUse}`));
+            if (version !== undefined) {
+              console.log(chalk.gray(`   Version: ${version}`));
+            }
           }
         } else {
-          console.log(chalk.white(`🔍 Getting fragment: ${path}`));
-          if (version !== undefined) {
-            console.log(chalk.gray(`   Version: ${version}`));
+          if (context.flags.debug) {
+            console.log(chalk.white(`🔍 Getting fragment: ${path}`));
+            if (version !== undefined) {
+              console.log(chalk.gray(`   Version: ${version}`));
+            }
           }
         }
 
@@ -384,7 +402,9 @@ export const exec = async (context) => {
         if (context.flags.raw) {
           if (usePublicAccess) {
             console.error(chalk.red('❌ Raw mode not available with public access (--subject)'));
-            console.error(chalk.gray('   Raw fragments require authenticated access to your own data'));
+            console.error(
+              chalk.gray('   Raw fragments require authenticated access to your own data')
+            );
             process.exit(1);
           } else {
             const opts = version !== undefined ? { version } : {};
@@ -469,19 +489,19 @@ export const exec = async (context) => {
       } else {
         // Check if data is available on stdin
         let stdinData = '';
-        
+
         // Check if stdin is not a TTY (meaning it's piped/redirected)
         if (!process.stdin.isTTY) {
           // Read from stdin
           process.stdin.setEncoding('utf8');
-          
+
           for await (const chunk of process.stdin) {
             stdinData += chunk;
           }
-          
+
           stdinData = stdinData.trim();
         }
-        
+
         if (stdinData) {
           // Use stdin data
           try {
@@ -491,16 +511,19 @@ export const exec = async (context) => {
           }
         } else {
           // Prompt for value
-          const response = await prompts({
-            type: 'text',
-            name: 'data',
-            message: `Enter value for fragment ${path} (JSON or string):`,
-          }, {
-            onCancel: () => {
-              console.log(chalk.yellow('\n⚠️  Operation cancelled.'));
-              process.exit(1);
+          const response = await prompts(
+            {
+              type: 'text',
+              name: 'data',
+              message: `Enter value for fragment ${path} (JSON or string):`,
+            },
+            {
+              onCancel: () => {
+                console.log(chalk.yellow('\n⚠️  Operation cancelled.'));
+                process.exit(1);
+              },
             }
-          });
+          );
 
           if (!response.data) {
             console.log(chalk.yellow('⚠️  No data provided, aborting.'));
@@ -517,29 +540,32 @@ export const exec = async (context) => {
 
       // Check for visibility flag or ask for it
       let visibility = context.flags.visibility || context.flags.v;
-      
+
       if (!visibility) {
-        const visibilityResponse = await prompts({
-          type: 'select',
-          name: 'visibility',
-          message: 'Fragment visibility:',
-          choices: [
-            { title: 'Private (encrypted)', value: 'private' },
-            { title: 'Public (plaintext)', value: 'public' },
-          ],
-          initial: 0,
-        }, {
-          onCancel: () => {
-            console.log(chalk.yellow('\n⚠️  Operation cancelled.'));
-            process.exit(1);
+        const visibilityResponse = await prompts(
+          {
+            type: 'select',
+            name: 'visibility',
+            message: 'Fragment visibility:',
+            choices: [
+              { title: 'Private (encrypted)', value: 'private' },
+              { title: 'Public (plaintext)', value: 'public' },
+            ],
+            initial: 0,
+          },
+          {
+            onCancel: () => {
+              console.log(chalk.yellow('\n⚠️  Operation cancelled.'));
+              process.exit(1);
+            },
           }
-        });
+        );
 
         if (visibilityResponse.visibility === undefined) {
           console.log(chalk.yellow('⚠️  No visibility selected, aborting.'));
           process.exit(0);
         }
-        
+
         visibility = visibilityResponse.visibility;
       }
 
@@ -548,14 +574,14 @@ export const exec = async (context) => {
         if (version !== undefined) {
           console.log(chalk.gray(`   Version: ${version}`));
         }
-        
+
         const opts = {
           visibility: visibility,
         };
         if (version !== undefined) {
           opts.version = version;
         }
-        
+
         await client.put(path, data, opts);
         console.log(chalk.green('✅ Fragment stored successfully'));
 
@@ -587,30 +613,38 @@ export const exec = async (context) => {
       const detailed = context.flags.detailed || context.flags.d || context.flags.l;
 
       try {
-        console.log(chalk.white(`📋 Listing fragments${prefix !== '/' ? ` with prefix: ${prefix}` : ''}${detailed ? ' (detailed)' : ''}`));
+        console.log(
+          chalk.white(
+            `📋 Listing fragments${prefix !== '/' ? ` with prefix: ${prefix}` : ''}${
+              detailed ? ' (detailed)' : ''
+            }`
+          )
+        );
         const fragments = await client.list(prefix);
 
         if (fragments && fragments.length > 0) {
           console.log(chalk.green(`✅ Found ${fragments.length} fragment(s):`));
-          
+
           if (detailed && fragments.length > 0) {
             // Fetch detailed information for each fragment
             console.log(chalk.gray('Fetching detailed information...'));
             for (let i = 0; i < fragments.length; i++) {
-              const fragmentPath = typeof fragments[i] === 'string' ? fragments[i] : fragments[i].path;
+              const fragmentPath =
+                typeof fragments[i] === 'string' ? fragments[i] : fragments[i].path;
               try {
                 // Get raw fragment to check visibility
                 const fullFragment = await client.getRaw(fragmentPath);
                 const visibility = getFragmentVisibility(fullFragment);
-                const icon = visibility === 'public' ? '🌐' : visibility === 'private' ? '🔒' : '❓';
-                
+                const icon =
+                  visibility === 'public' ? '🌐' : visibility === 'private' ? '🔒' : '❓';
+
                 console.log(`${i + 1}. ${icon} ${fragmentPath} (${visibility})`);
-                
+
                 if (fullFragment.meta?.ts) {
                   const createdDate = new Date(fullFragment.meta.ts).toISOString();
                   console.log(chalk.gray(`   Created: ${createdDate}`));
                 }
-                
+
                 if (fullFragment.fragment) {
                   const size = new TextEncoder().encode(fullFragment.fragment).length;
                   console.log(chalk.gray(`   Size: ${size} bytes`));
@@ -659,17 +693,20 @@ export const exec = async (context) => {
       }
 
       // Confirm deletion
-      const confirmResponse = await prompts({
-        type: 'confirm',
-        name: 'confirm',
-        message: `Are you sure you want to delete fragment: ${path}?`,
-        initial: false,
-      }, {
-        onCancel: () => {
-          console.log(chalk.yellow('\n⚠️  Operation cancelled.'));
-          process.exit(1);
+      const confirmResponse = await prompts(
+        {
+          type: 'confirm',
+          name: 'confirm',
+          message: `Are you sure you want to delete fragment: ${path}?`,
+          initial: false,
+        },
+        {
+          onCancel: () => {
+            console.log(chalk.yellow('\n⚠️  Operation cancelled.'));
+            process.exit(1);
+          },
         }
-      });
+      );
 
       if (!confirmResponse.confirm) {
         console.log(chalk.yellow('⚠️  Deletion cancelled'));
@@ -701,24 +738,25 @@ export const exec = async (context) => {
       const version = context.flags.version;
       if (!version) {
         console.error(chalk.red('❌ Version is required for recover operation'));
-        console.error(
-          `Usage: ${context.personality} fragment recover PATH --version=N`
-        );
+        console.error(`Usage: ${context.personality} fragment recover PATH --version=N`);
         process.exit(1);
       }
 
       // Confirm recovery
-      const confirmResponse = await prompts({
-        type: 'confirm',
-        name: 'confirm',
-        message: `Are you sure you want to recover version ${version} of ${path} as the current version?`,
-        initial: false,
-      }, {
-        onCancel: () => {
-          console.log(chalk.yellow('\n⚠️  Operation cancelled.'));
-          process.exit(1);
+      const confirmResponse = await prompts(
+        {
+          type: 'confirm',
+          name: 'confirm',
+          message: `Are you sure you want to recover version ${version} of ${path} as the current version?`,
+          initial: false,
+        },
+        {
+          onCancel: () => {
+            console.log(chalk.yellow('\n⚠️  Operation cancelled.'));
+            process.exit(1);
+          },
         }
-      });
+      );
 
       if (!confirmResponse.confirm) {
         console.log(chalk.yellow('⚠️  Recovery cancelled'));
@@ -729,7 +767,7 @@ export const exec = async (context) => {
         console.log(chalk.white(`🔄 Recovering fragment: ${path} (version ${version})`));
         const result = await client.recover(path, parseInt(version, 10));
         console.log(chalk.green('✅ Fragment recovered successfully'));
-        
+
         if (context.flags.debug) {
           console.log(chalk.gray('Result:'), result);
         }
@@ -749,33 +787,52 @@ export const exec = async (context) => {
         `  ${context.personality} fragment get PATH [--raw] [--version=N] [--subject=email:user@domain.com] [--timeout=30000] [--no-retry] [--api-url=URL]`
       );
       console.error(
+        `  ${context.personality} fragment raw PATH [--version=N] [--subject=email:user@domain.com] [--timeout=30000] [--no-retry] [--api-url=URL]`
+      );
+      console.error(
         `  ${context.personality} fragment put PATH [VALUE] [--version=N] [--visibility=public|private] [--timeout=30000] [--no-retry] [--api-url=URL]`
       );
       console.error(
         `  ${context.personality} fragment list|ls [PREFIX] [-l|--detailed] [--timeout=30000] [--no-retry] [--api-url=URL]`
       );
-      console.error(`  ${context.personality} fragment delete PATH [--timeout=30000] [--no-retry] [--api-url=URL]`);
-      console.error(`  ${context.personality} fragment recover PATH --version=N [--timeout=30000] [--no-retry] [--api-url=URL]`);
+      console.error(
+        `  ${context.personality} fragment delete PATH [--timeout=30000] [--no-retry] [--api-url=URL]`
+      );
+      console.error(
+        `  ${context.personality} fragment recover PATH --version=N [--timeout=30000] [--no-retry] [--api-url=URL]`
+      );
       console.error('');
       console.error('Flags:');
       console.error('  --raw       Get raw fragment before decryption (get command only)');
-      console.error('  --version   Specific version number to retrieve/create/recover (get, put, and recover commands)');
+      console.error(
+        '  --version   Specific version number to retrieve/create/recover (get, put, and recover commands)'
+      );
       console.error('  --subject   Subject for accessing public fragments (get command only)');
-      console.error('  --visibility, -v  Fragment visibility: public or private (put command only)');
+      console.error(
+        '  --visibility, -v  Fragment visibility: public or private (put command only)'
+      );
       console.error('  -l, --detailed  Show visibility and metadata (list/ls command only)');
-      console.error('  --ssh-key   Path to SSH private key for unlock (default: ~/.ssh/id_ed25519 or ~/.ssh/id_rsa)');
+      console.error(
+        '  --ssh-key   Path to SSH private key for unlock (default: ~/.ssh/id_ed25519 or ~/.ssh/id_rsa)'
+      );
       console.error('  --timeout   API timeout in milliseconds (default: 30000)');
       console.error('  --no-retry  Disable automatic retries on network errors');
       console.error('  --api-url   API base URL (default: config or https://www.ident.agency)');
       console.error('  --debug     Enable debug output');
       console.error('');
       console.error('Examples:');
-      console.error('  echo \'{"name": "John"}\' | identa fragment put profile/user --visibility=public');
-      console.error('  cat secrets.json | identa fragment put config/api-keys --visibility=private');
+      console.error(
+        '  echo \'{"name": "John"}\' | identa fragment put profile/user --visibility=public'
+      );
+      console.error(
+        '  cat secrets.json | identa fragment put config/api-keys --visibility=private'
+      );
       console.error('  identa fragment put test/simple "hello world" -v public');
       console.error('  identa fragment get profile/user --raw  # Get raw fragment envelope');
       console.error('  identa fragment get profile/user --version=123  # Get specific version');
-      console.error('  identa fragment put profile/user "John Smith" --version=124 --visibility=public  # Create specific version');
+      console.error(
+        '  identa fragment put profile/user "John Smith" --version=124 --visibility=public  # Create specific version'
+      );
       process.exit(1);
     }
   }
