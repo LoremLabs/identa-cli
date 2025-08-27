@@ -1,6 +1,6 @@
 import { decodeBase64Url, encodeBase64Url } from '../lib/bytes.js';
 
-import { IdentClient } from '../../../ident-agency-sdk/lib-js/index.js';
+import { IdentClient } from '@ident-agency/core';
 import chalk from 'chalk';
 import config from '../lib/config.js';
 import { createDeviceKeyStorageProvider } from '../lib/device-key-storage.js';

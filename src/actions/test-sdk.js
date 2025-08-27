@@ -1,6 +1,6 @@
+import { IdentClient } from '@ident-agency/core';
 import chalk from 'chalk';
 import prompts from 'prompts';
-import { IdentClient } from '../../../ident-agency-sdk/lib-js/index.js';
 import { resolveApiBaseUrl } from '../lib/api-url.js';
 
 export const description = 'Test the Ident SDK end-to-end (login, store, retrieve, list)';

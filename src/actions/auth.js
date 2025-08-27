@@ -1,10 +1,10 @@
-import { IdentClient } from '../../../ident-agency-sdk/lib-js/index.js';
+import { IdentClient } from '@ident-agency/core';
 import chalk from 'chalk';
 import config from '../lib/config.js';
+import { createDeviceKeyStorageProvider } from '../lib/device-key-storage.js';
+import { getSecretProvider } from '../lib/secrets.js';
 import prompts from 'prompts';
 import { resolveApiBaseUrl } from '../lib/api-url.js';
-import { getSecretProvider } from '../lib/secrets.js';
-import { createDeviceKeyStorageProvider } from '../lib/device-key-storage.js';
 
 // Create a device key provider function for CLI
 function createDeviceKeyProvider() {
