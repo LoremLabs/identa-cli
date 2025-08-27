@@ -5,3 +5,4 @@ tmp
 logs
 .env
 test-*
+.svelte-kit/
