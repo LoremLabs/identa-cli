@@ -55,7 +55,7 @@ jobs:
       - name: Read version
         id: read_version
         run: |
-          VERSION=$(node -p 'require("./package.json").version')
+          VERSION=$(node -p "require('./package.json').version")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Current version: $VERSION"
 
@@ -88,7 +88,10 @@ jobs:
 
       - name: Read current version
         id: current_version
-        run: echo "version=$(node -p 'require(\"./package.json\").version')" >> "$GITHUB_OUTPUT"
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Current version: $VERSION"
 
       # Bump version (explicit)
       - name: Bump version (explicit)
@@ -102,7 +105,10 @@ jobs:
 
       - name: Read version after bump
         id: read_version
-        run: echo "version=$(node -p 'require(\"./package.json\").version')" >> "$GITHUB_OUTPUT"
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Version after bump: $VERSION"
 
       - name: Commit version bump
         if: (inputs.explicit_version != '' || inputs.bump_type != 'none')
@@ -136,6 +142,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           VERSION="${{ needs.publish_npm.outputs.version || needs.get_version.outputs.version }}"
+          if [ -z "$VERSION" ]; then
+            echo "Error: VERSION is empty, cannot create tag"
+            exit 1
+          fi
           echo "Creating tag v${VERSION}"
           git tag "v${VERSION}" || true
           git push origin "v${VERSION}" || true
