@@ -55,6 +55,7 @@ jobs:
           # If you keep versioning in a separate PR step, this action will create the PR.
           # When changesets exist and are merged, this will publish.
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       # Extract the published version of this package from the action’s JSON output
