@@ -36,19 +36,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.3
+          run_install: false
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org/
           cache: pnpm
-
-      - run: corepack enable
-      - run: corepack prepare pnpm@10.6.3 --activate
-
-      - uses: pnpm/action-setup@v4
-        with:
-          run_install: false
 
       - run: pnpm --version
 
