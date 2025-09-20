@@ -109,7 +109,9 @@ jobs:
   tag_and_build:
     name: Tag repo
     needs: [publish_npm, get_version]
-    if: always() && (needs.publish_npm.outputs.version != '' || needs.get_version.outputs.version != '')
+    if: |
+      always() &&
+      (needs.publish_npm.result == 'success' || needs.get_version.result == 'success')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -129,7 +131,10 @@ jobs:
   build_binaries:
     name: Build ${{ matrix.target }}
     needs: [publish_npm, get_version]
-    if: always() && inputs.skip_binaries != true && (needs.publish_npm.outputs.version != '' || needs.get_version.outputs.version != '')
+    if: |
+      always() &&
+      inputs.skip_binaries != true &&
+      (needs.publish_npm.result == 'success' || needs.get_version.result == 'success')
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -187,7 +192,10 @@ jobs:
   release:
     name: Create GitHub Release
     needs: [publish_npm, get_version, build_binaries, tag_and_build]
-    if: always() && inputs.skip_binaries != true && (needs.publish_npm.outputs.version != '' || needs.get_version.outputs.version != '')
+    if: |
+      always() &&
+      inputs.skip_binaries != true &&
+      needs.build_binaries.result == 'success'
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.publish_npm.outputs.version || needs.get_version.outputs.version }}
