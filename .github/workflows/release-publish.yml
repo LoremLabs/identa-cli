@@ -122,15 +122,13 @@ jobs:
       - name: Install deps
         run: bun install --frozen-lockfile
 
-      # Build the single-file binary from your entry (adjust path if needed)
       - name: Build binary
         shell: bash
         run: |
           OUT="${BINARY_BASENAME}-${{ matrix.target }}"
           [[ "${{ matrix.target }}" == win-* ]] && OUT="${OUT}.exe"
-          # Embed version into the binary via env if you print it in --version
-          bun build --compile src/index.ts --outfile "$OUT"
-          echo "OUT=$OUT" >> "$GITHUB_ENV"
+          bun build --compile src/ident-agency-cli.js --outfile "$OUT"
+          echo "OUT=$OUT" >> $GITHUB_ENV
 
       - name: Generate SHA256
         shell: bash
