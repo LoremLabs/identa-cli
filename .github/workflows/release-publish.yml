@@ -42,8 +42,8 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # Build your CLI (ts -> dist) so publish includes compiled JS
-      - name: Build
-        run: pnpm run build
+      # - name: Build
+      #   run: pnpm run build
 
       # Use Changesets to publish. We pass --tag from the workflow input.
       # Assumes you have Changesets configured and .changeset files present.
