@@ -1,0 +1,5 @@
+# Local development overrides for Ident Agency SDK
+# Rename this file to .npmrc to use local packages during development
+
+# Use local packages from filesystem
+@ident-agency:registry=file:../ident-agency-sdk/packages/

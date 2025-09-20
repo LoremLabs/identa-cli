@@ -582,7 +582,7 @@ export const exec = async (context) => {
           opts.version = version;
         }
 
-        await client.put(path, data, opts);
+        await client.put(path, data, opts); // TODO: add tags to meta
         console.log(chalk.green('✅ Fragment stored successfully'));
 
         if (context.flags.debug) {

@@ -1,0 +1,9 @@
+# Workspace configuration for local development with the SDK
+# This allows using the SDK core package from the local filesystem during development
+
+packages:
+  # Current CLI package
+  - '.'
+  # SDK core package (when developing locally)
+  # Uncomment this line when working with local SDK core package
+  # - '../ident-agency-sdk/packages/core'

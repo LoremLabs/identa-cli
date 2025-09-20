@@ -1,0 +1,11 @@
+{
+  "//": "Example configuration for local development with SDK core package",
+  "//": "Copy the 'pnpm' section below into your package.json for local development",
+  "//": "Remember to run 'pnpm install' after making changes",
+
+  "pnpm": {
+    "overrides": {
+      "@ident-agency/core": "file:../ident-agency-sdk/packages/core"
+    }
+  }
+}

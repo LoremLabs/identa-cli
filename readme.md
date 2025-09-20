@@ -1,16 +1,29 @@
-# Identa (Ident Agency CLI)
+# Ident Agency CLI
 
-This CLI tool provides a common interface for interacting with the Indet Agency.
+Command-line interface for Ident Agency - secure, privacy-preserving identity and data management.
+
+## Installation
+
+### Global Installation (Recommended)
+
+Install the CLI globally to use it from anywhere:
+
+```bash
+npm install -g @ident-agency/identa-cli
+```
+
+Or using npx (without installation):
+
+```bash
+npx @ident-agency/identa-cli help
+```
+
+### Local Development
+
+For development, clone the repository and link locally:
 
 ```bash
 pnpm install
-```
-
-### Make the CLI globally available
-
-To make the CLI globally available, you can use `pnpm link`:
-
-```bash
 pnpm link --global
 ```
 
