@@ -44,10 +44,13 @@ jobs:
           cache: pnpm
 
       - run: corepack enable
+      - run: corepack prepare pnpm@10.6.3 --activate
 
       - uses: pnpm/action-setup@v4
         with:
           run_install: false
+
+      - run: pnpm --version
 
       - name: Install deps
         run: pnpm install --frozen-lockfile
