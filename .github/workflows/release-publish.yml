@@ -12,7 +12,7 @@ on:
       bump_type:
         description: 'Version bump type (ignored if explicit_version is set)'
         required: true
-        default: 'none'
+        default: 'patch'
         type: choice
         options: [none, patch, minor, major]
       explicit_version:
@@ -39,7 +39,6 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 10.6.3
           run_install: false
 
       - name: Setup Node
