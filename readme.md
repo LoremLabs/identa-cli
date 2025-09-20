@@ -1,10 +1,8 @@
 # Ident Agency CLI
 
-Command-line interface for Ident Agency - secure, privacy-preserving identity and data management.
+Command-line interface for [Ident Agency](https://www.ident.agency) - secure, privacy-preserving identity and data management.
 
 ## Installation
-
-### Global Installation (Recommended)
 
 Install the CLI globally to use it from anywhere:
 
@@ -16,6 +14,24 @@ Or using npx (without installation):
 
 ```bash
 npx @ident-agency/identa-cli help
+```
+
+```bash
+npm install -g @ident-agency/identa-cli
+```
+
+Or using npx (without installation):
+```bash
+npx @ident-agency/identa-cli help
+```
+
+```bash
+npx @ident-agency/identa-cli help
+```
+
+Or install the binary
+```bash
+curl -fsSL https://get.ident.agency/install.sh | sh
 ```
 
 ### Local Development
@@ -33,12 +49,110 @@ pnpm link --global
 identa help
 ```
 
-## List Commands
+## Common Commands
 
-You can list all commands by running:
+### Authentication
 
 ```bash
-ident
+# Login to Ident.Agency (opens browser for OAuth flow)
+identa auth login
+
+# View your profile information
+identa auth profile
+
+# Logout
+identa auth logout
+
+# Change password
+identa auth change-password
+```
+
+### Fragments (Data Management)
+
+```bash
+# List fragments (alias: ls)
+identa fragment list
+identa fragment ls
+
+# Get a fragment value
+identa fragment get <path>
+# Example: identa fragment get profile/name
+
+# Write/update a fragment
+identa fragment put <path> <value>
+# Example: identa fragment put profile/bio "Software developer"
+
+# Get raw fragment data (includes metadata)
+identa fragment raw <path>
+
+# Delete a fragment
+identa fragment delete <path>
+# Example: identa fragment delete profile/old-data
+
+# Recover a deleted fragment
+identa fragment recover <path>
+```
+
+### Secrets Management (Local Device Secrets)
+
+```bash
+# Set the secrets provider (local, gcp)
+identa secrets provider <provider>
+# Example: identa secrets provider local
+
+# Store a secret locally
+identa secrets set <key> <value>
+# Example: identa secrets set github-token ghp_xxxxx
+
+# Retrieve a secret
+identa secrets get <key>
+
+# List all secrets
+identa secrets list
+
+# Delete a secret
+identa secrets delete <key>
+
+# Google Cloud Platform secrets (if configured)
+identa secrets gcp <project-id> <secret-name>
+```
+
+### Key Management
+
+```bash
+# Register a new key/device
+identa keys register
+
+# List registered keys
+identa keys list
+
+# Remove a key
+identa keys remove <key-id>
+
+# Test key functionality
+identa keys test
+
+# Device-specific operations
+identa keys device
+
+# Recovery key operations
+identa keys recovery
+
+# SSH key operations
+identa keys ssh
+```
+
+### Advanced Options
+
+```bash
+# Enable debug output
+identa auth login --debug
+
+# Use a different API endpoint
+identa auth login --api-url https://staging.ident.agency
+
+# Output as JSON (where supported)
+identa fragment get profile --json
 ```
 
 ## Config
@@ -101,65 +215,3 @@ identa auth login --debug
 # Output: 🔧 API URL: https://www.ident.agency (from config)
 ```
 
-## Secrets
-
-An example action "secrets" is provided to manage secrets. This allows you to store and retrieve secrets securely using the os secure enclave via keytar or GCP Secret Manager.
-
-You can interface with a secret manager using the `identa secrets` command. Currently supported secret managers are:
-
-- `local` - Local secret manager (OS keychain) [preferred for development]
-- `gcp` - Google Cloud Secret Manager
-
-You can set a secret with:
-
-```bash
-identa secrets set --service="$optionalKeyPrefix" <key> <value>
-```
-
-You can read a secret with:
-
-```bash
-identa secrets get --service="$optionalKeyPrefix" <key>
-```
-
-You can set the default secret manager with:
-
-```bash
-identa secrets provider <provider:local|gcp>
-```
-
-If you use GCP Secret Manager, you will be prompted to authenticate with your Google account. You can also set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable to point to a service account key file.
-
-## Adding New Commands
-
-You can add new commands by creating a new file in the `src/actions` directory. There are two ways to add a command: 1) as a javascript file or 2) as a shell script. The CLI will automatically detect and load the command, preferring the javascript file if both are present.
-
-If the command is a javascript file, it should export an exec function:
-
-```
-import chalk from "chalk";
-import getStdin from "get-stdin";
-
-const log = console.log;
-
-export const exec = async (context) => {
-  const input = await getStdin();
-
-  // context contains the flags and input
-
-  if (!context.flags.quiet) {
-    log(`via: ${context.personality}\n`);
-    log(
-      chalk.white(
-        JSON.stringify(
-          { ...context, stdin: input, env: { ...process.env } },
-          null,
-          2
-        )
-      )
-    );
-  }
-};
-
-export const description = "hello world example in javascript";
-```
