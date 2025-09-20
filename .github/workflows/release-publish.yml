@@ -1,0 +1,174 @@
+name: Publish & Release identa CLI (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      dist_tag:
+        description: 'npm dist-tag (e.g. next, latest, beta)'
+        type: choice
+        required: true
+        default: next
+        options: [next, latest, beta]
+
+permissions:
+  contents: write # needed to create tags/releases
+
+env:
+  PKG_NAME: '@ident-agency/identa-cli'
+
+jobs:
+  publish_npm:
+    name: Publish to npm with Changesets
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.pick.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org/
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      # Build your CLI (ts -> dist) so publish includes compiled JS
+      - name: Build
+        run: pnpm run build
+
+      # Use Changesets to publish. We pass --tag from the workflow input.
+      # Assumes you have Changesets configured and .changeset files present.
+      - name: Publish via Changesets
+        id: publish
+        uses: changesets/action@v1
+        with:
+          publish: pnpm changeset publish --tag ${{ inputs.dist_tag }}
+          # If you keep versioning in a separate PR step, this action will create the PR.
+          # When changesets exist and are merged, this will publish.
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Extract the published version of this package from the action’s JSON output
+      - name: Pick published version for this package
+        id: pick
+        if: steps.publish.outputs.published != '[]'
+        run: |
+          echo '${{ steps.publish.outputs.published }}' | jq -r \
+            '.[] | select(.name == env.PKG_NAME) | .version' | tee VERSION.txt
+          echo "version=$(cat VERSION.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Fail if nothing was published
+        if: steps.publish.outputs.published == '[]'
+        run: |
+          echo "No packages published (Changesets found nothing to release)." >&2
+          exit 1
+
+  tag_and_build:
+    name: Tag repo & build Bun binaries
+    needs: publish_npm
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.publish_npm.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create git tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "v${VERSION}"
+          git push origin "v${VERSION}"
+
+  build_binaries:
+    name: Build ${{ matrix.target }}
+    needs: publish_npm
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: darwin-arm64
+          - os: macos-latest
+            target: darwin-x64
+          - os: ubuntu-latest
+            target: linux-x64
+          - os: windows-latest
+            target: win-x64
+    env:
+      VERSION: ${{ needs.publish_npm.outputs.version }}
+      BINARY_BASENAME: identa
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      # Build the single-file binary from your entry (adjust path if needed)
+      - name: Build binary
+        shell: bash
+        run: |
+          OUT="${BINARY_BASENAME}-${{ matrix.target }}"
+          [[ "${{ matrix.target }}" == win-* ]] && OUT="${OUT}.exe"
+          # Embed version into the binary via env if you print it in --version
+          bun build --compile src/index.ts --outfile "$OUT"
+          echo "OUT=$OUT" >> "$GITHUB_ENV"
+
+      - name: Generate SHA256
+        shell: bash
+        run: |
+          FILE="${OUT}"
+          if command -v shasum >/dev/null 2>&1; then
+            shasum -a 256 "$FILE" | awk '{print $1}' > "${FILE}.sha256"
+          elif command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$FILE" | awk '{print $1}' > "${FILE}.sha256"
+          else
+            echo "No sha256 tool found" >&2; exit 1
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: identa-${{ matrix.target }}
+          path: |
+            ${{ env.OUT }}
+            ${{ env.OUT }}.sha256
+
+  release:
+    name: Create GitHub Release
+    needs: [publish_npm, build_binaries, tag_and_build]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.publish_npm.outputs.version }}
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Create/Update Release v${{ env.VERSION }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: v${{ env.VERSION }}
+          generate_release_notes: true
+          files: dist/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
