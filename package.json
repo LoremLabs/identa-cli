@@ -1,6 +1,6 @@
 {
   "name": "@ident-agency/identa-cli",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Command-line interface for Ident Agency - secure, privacy-preserving identity and data management",
   "main": "src/index.js",
   "scripts": {
