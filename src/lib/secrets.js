@@ -2,15 +2,14 @@ import { GoogleAuth } from 'google-auth-library';
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 import chalk from 'chalk';
 import config from './config.js';
-import keytar from 'keytar';
 import prompts from 'prompts';
 import { spawnSync } from 'child_process';
 
 class SecretProvider {
-  async get(service, key) {}
-  async set(service, key, value) {}
-  async delete(service, key) {}
-  async list(service) {}
+  async get() {}
+  async set() {}
+  async delete() {}
+  async list() {}
   async setup() {}
   type() {}
 }
@@ -42,7 +41,7 @@ class KeytarProvider extends SecretProvider {
     return keytar.deletePassword(service, key);
   }
 
-  async list(service) {
+  async list() {
     console.warn('Listing not supported for keytar');
     return [];
   }
@@ -234,7 +233,7 @@ class GCPSecretManagerProvider extends SecretProvider {
     await this.client.deleteSecret({ name: this._secretPath(service, key) });
   }
 
-  async list(service) {
+  async list() {
     console.warn('Listing not yet implemented for GCP');
     return [];
   }

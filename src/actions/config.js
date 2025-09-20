@@ -4,7 +4,7 @@ import config from '../lib/config.js';
 export const description = 'Manage global config (set, get, list)';
 
 export const exec = async (context) => {
-  const [cmd, subcommand, key = '', ...rest] = context.input;
+  const [, subcommand, key = '', ...rest] = context.input;
   const value = rest.join(' ');
 
   if (context.flags.debug) {

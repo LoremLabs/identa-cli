@@ -6,7 +6,7 @@ import { resolveApiBaseUrl } from '../lib/api-url.js';
 export const description = 'Test the Ident SDK end-to-end (login, store, retrieve, list)';
 
 export const exec = async (context) => {
-  const [cmd] = context.input;
+  // No need to destructure input for this command
 
   if (context.flags.debug) {
     console.log(chalk.blue('Running SDK end-to-end test'));

@@ -7,7 +7,7 @@ import prompts from 'prompts';
 export const description = 'Manage global secret config (set, get, list, delete)';
 
 export const exec = async (context) => {
-  const [cmd, subcommand, key = '', ...rest] = context.input;
+  const [, subcommand, key = '', ...rest] = context.input;
   const value = rest.join(' ');
 
   const service =

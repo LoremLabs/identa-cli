@@ -39,7 +39,7 @@ function createDeviceKeyProvider() {
 export const description = 'Authentication commands (login, logout, profile)';
 
 export const exec = async (context) => {
-  const [cmd, subcommand, ...rest] = context.input;
+  const [, subcommand] = context.input;
 
   if (context.flags.debug) {
     console.log(chalk.blue(`Running auth command: ${subcommand}`));

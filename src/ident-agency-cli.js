@@ -1,4 +1,4 @@
-#!/usr/bin/env -S npx tsx
+#!/usr/bin/env node
 
 // Suppress the punycode deprecation warning from dependencies
 process.removeAllListeners('warning');

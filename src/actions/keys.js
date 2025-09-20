@@ -3,7 +3,6 @@ import { decodeBase64Url, encodeBase64Url } from '../lib/bytes.js';
 
 import { IdentClient } from '@ident-agency/core';
 import chalk from 'chalk';
-import config from '../lib/config.js';
 import { createDeviceKeyStorageProvider } from '../lib/device-key-storage.js';
 import fs from 'fs/promises';
 import fsSync from 'fs';
@@ -16,7 +15,7 @@ import { resolveApiBaseUrl } from '../lib/api-url.js';
 export const description = 'Authentication key management (register, list, remove, test)';
 
 export const exec = async (context) => {
-  const [cmd, subcommand, ...rest] = context.input;
+  const [, subcommand] = context.input;
 
   if (context.flags.debug) {
     console.log(chalk.blue(`Running keys command: ${subcommand}`));
@@ -730,7 +729,7 @@ async function testCommand(context) {
       console.log(chalk.green('🧪 Available unlock methods:'));
 
       // Create selection options
-      const choices = allMethods.map((method, index) => {
+      const choices = allMethods.map((method) => {
         const icon =
           method.method === 'password'
             ? '🔒'
@@ -750,12 +749,6 @@ async function testCommand(context) {
         }
 
         // Mark if method uses browser consent flow
-        const isTestableInCLI =
-          method.method === 'password' ||
-          method.method === 'device' ||
-          method.method === 'recovery' ||
-          method.method === 'ssh' ||
-          method.method.startsWith('passkey');
         if (method.method.startsWith('passkey')) {
           displayName += chalk.gray(' (via browser)');
         }
@@ -1067,7 +1060,7 @@ function createDeviceKeyProvider() {
 
 // Create an SSH key provider function for CLI
 function createSSHKeyProvider(customKeyPath) {
-  return async (keyId) => {
+  return async () => {
     // Try to find the SSH private key
     // First try the default location
     const defaultKeyPath = path.join(os.homedir(), '.ssh', 'id_ed25519');

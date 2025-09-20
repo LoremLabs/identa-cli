@@ -1,4 +1,4 @@
-import { decodeBase64Url, encodeBase64Url } from '../lib/bytes.js';
+import { decodeBase64Url } from '../lib/bytes.js';
 
 import { IdentClient } from '@ident-agency/core';
 import chalk from 'chalk';
@@ -38,7 +38,7 @@ function createDeviceKeyProvider() {
 
 // Create an SSH key provider function for CLI
 function createSSHKeyProvider(customKeyPath) {
-  return async (keyId) => {
+  return async () => {
     const defaultKeyPath = path.join(os.homedir(), '.ssh', 'id_ed25519');
     const rsaKeyPath = path.join(os.homedir(), '.ssh', 'id_rsa');
 
@@ -130,7 +130,7 @@ function getFragmentVisibility(fragment) {
 export const description = 'Manage fragments (get, put, list, delete)';
 
 export const exec = async (context) => {
-  const [cmd, subcommand, path, ...rest] = context.input;
+  const [, subcommand, path, ...rest] = context.input;
   const value = rest.join(' ');
 
   if (context.flags.debug) {
@@ -327,6 +327,7 @@ export const exec = async (context) => {
     case 'raw': {
       // Alias for get --raw, set the raw flag and fall through
       context.flags.raw = true;
+      // falls through
     }
     case 'get': {
       if (!path) {

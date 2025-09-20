@@ -5,7 +5,8 @@
   "main": "src/index.js",
   "scripts": {
     "format": "prettier --write \"**/*.{js,ts,tsx,md}\"",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint .",
+    "test": "node src/ident-agency-cli.js --help",
     "prepublishOnly": "npm run format",
     "dev:setup": "echo 'To use local SDK core package, add the following to package.json:\\n\\n\"pnpm\": {\\n  \"overrides\": {\\n    \"@ident-agency/core\": \"file:../ident-agency-sdk/packages/core\"\\n  }\\n}'",
     "link:global": "pnpm link --global",
@@ -14,6 +15,12 @@
     "publish:latest": "npm publish --tag latest"
   },
   "type": "module",
+  "exports": {
+    ".": {
+      "import": "./src/index.js",
+      "require": "./src/index.js"
+    }
+  },
   "bin": {
     "identa": "src/ident-agency-cli.js"
   },

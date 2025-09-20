@@ -1,9 +1,6 @@
 import chalk from 'chalk';
 import colorize from 'json-colorizer';
-import fs from 'fs';
 import prompts from 'prompts';
-import sysOpen from 'open';
-import toml from 'toml';
 import { waitFor } from '../lib/wait.js';
 
 const log = console.log;
@@ -56,7 +53,7 @@ const exec = async (context) => {
         // draw a line
         const line = '-'.repeat(Math.max(10, width - 10));
         log(chalk.blue(line));
-        const authStart = await waitFor(waitPromise, {
+        await waitFor(waitPromise, {
           text: `Waiting...`,
         });
 
