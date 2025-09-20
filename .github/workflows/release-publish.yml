@@ -24,6 +24,11 @@ on:
         required: false
         type: boolean
         default: false
+      skip_binaries:
+        description: 'Skip building binaries (npm publish only)'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -115,7 +120,7 @@ jobs:
   build_binaries:
     name: Build ${{ matrix.target }}
     needs: [publish_npm, get_version]
-    if: always() && (needs.publish_npm.outputs.version != '' || needs.get_version.outputs.version != '')
+    if: always() && inputs.skip_binaries != true && (needs.publish_npm.outputs.version != '' || needs.get_version.outputs.version != '')
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -173,7 +178,7 @@ jobs:
   release:
     name: Create GitHub Release
     needs: [publish_npm, get_version, build_binaries, tag_and_build]
-    if: always() && (needs.publish_npm.outputs.version != '' || needs.get_version.outputs.version != '')
+    if: always() && inputs.skip_binaries != true && (needs.publish_npm.outputs.version != '' || needs.get_version.outputs.version != '')
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.publish_npm.outputs.version || needs.get_version.outputs.version }}
