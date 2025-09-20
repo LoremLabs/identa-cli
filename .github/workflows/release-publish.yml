@@ -9,19 +9,29 @@ on:
         required: true
         default: next
         options: [next, latest, beta]
+      bump_type:
+        description: 'Version bump type (ignored if explicit_version is set)'
+        required: true
+        default: 'none'
+        type: choice
+        options: [none, patch, minor, major]
+      explicit_version:
+        description: 'Explicit version (e.g. 0.4.2). Leave blank to use bump_type.'
+        required: false
+        type: string
 
 permissions:
-  contents: write # needed to create tags/releases
+  contents: write
 
 env:
   PKG_NAME: '@ident-agency/identa-cli'
 
 jobs:
   publish_npm:
-    name: Publish to npm with Changesets
+    name: Publish to npm
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.pick.outputs.version }}
+      version: ${{ steps.read_version.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,6 +41,7 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org/
+          cache: pnpm
 
       - run: corepack enable
 
@@ -41,37 +52,24 @@ jobs:
       - name: Install deps
         run: pnpm install --frozen-lockfile
 
-      # Build your CLI (ts -> dist) so publish includes compiled JS
-      # - name: Build
-      #   run: pnpm run build
+      # Optional bump (skip if you pass none and no explicit_version)
+      - name: Bump version
+        if: inputs.explicit_version != '' || inputs.bump_type != 'none'
+        run: |
+          if [ -n "${{ inputs.explicit_version }}" ]; then
+            pnpm version ${{ inputs.explicit_version }} --no-git-tag-version
+          else
+            pnpm version ${{ inputs.bump_type }} --no-git-tag-version
+          fi
 
-      # Use Changesets to publish. We pass --tag from the workflow input.
-      # Assumes you have Changesets configured and .changeset files present.
-      - name: Publish via Changesets
-        id: publish
-        uses: changesets/action@v1
-        with:
-          publish: pnpm changeset publish --tag ${{ inputs.dist_tag }}
-          # If you keep versioning in a separate PR step, this action will create the PR.
-          # When changesets exist and are merged, this will publish.
+      - name: Read version
+        id: read_version
+        run: echo "version=$(node -p 'require(\"./package.json\").version')" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to npm
+        run: pnpm publish --access public --tag ${{ inputs.dist_tag }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      # Extract the published version of this package from the action’s JSON output
-      - name: Pick published version for this package
-        id: pick
-        if: steps.publish.outputs.published != '[]'
-        run: |
-          echo '${{ steps.publish.outputs.published }}' | jq -r \
-            '.[] | select(.name == env.PKG_NAME) | .version' | tee VERSION.txt
-          echo "version=$(cat VERSION.txt)" >> "$GITHUB_OUTPUT"
-
-      - name: Fail if nothing was published
-        if: steps.publish.outputs.published == '[]'
-        run: |
-          echo "No packages published (Changesets found nothing to release)." >&2
-          exit 1
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   tag_and_build:
     name: Tag repo & build Bun binaries
@@ -89,8 +87,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag "v${VERSION}"
-          git push origin "v${VERSION}"
+          git tag "v${VERSION}" || true
+          git push origin "v${VERSION}" || true
 
   build_binaries:
     name: Build ${{ matrix.target }}
@@ -137,10 +135,8 @@ jobs:
           FILE="${OUT}"
           if command -v shasum >/dev/null 2>&1; then
             shasum -a 256 "$FILE" | awk '{print $1}' > "${FILE}.sha256"
-          elif command -v sha256sum >/dev/null 2>&1; then
-            sha256sum "$FILE" | awk '{print $1}' > "${FILE}.sha256"
           else
-            echo "No sha256 tool found" >&2; exit 1
+            sha256sum "$FILE" | awk '{print $1}' > "${FILE}.sha256"
           fi
 
       - name: Upload artifacts
