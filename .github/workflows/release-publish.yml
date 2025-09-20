@@ -78,15 +78,15 @@ jobs:
       - name: Install deps
         run: pnpm install --frozen-lockfile
 
-      # Optional bump (skip if you pass none and no explicit_version)
-      - name: Bump version
-        if: inputs.explicit_version != '' || inputs.bump_type != 'none'
-        run: |
-          if [ -n "${{ inputs.explicit_version }}" ]; then
-            pnpm version ${{ inputs.explicit_version }} --no-git-tag-version
-          else
-            pnpm version ${{ inputs.bump_type }} --no-git-tag-version
-          fi
+      # Bump version (explicit)
+      - name: Bump version (explicit)
+        if: inputs.explicit_version != ''
+        run: pnpm version ${{ inputs.explicit_version }} --no-git-tag-version
+
+      # Bump version (by type)
+      - name: Bump version (by type)
+        if: inputs.explicit_version == '' && inputs.bump_type != 'none'
+        run: pnpm version ${{ inputs.bump_type }} --no-git-tag-version
 
       - name: Read version
         id: read_version
