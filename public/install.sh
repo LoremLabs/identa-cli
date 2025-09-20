@@ -48,7 +48,8 @@ else
 fi
 
 chmod +x "${ASSET}"
+mv "${ASSET}" "${NAME}"
 rm -f "${ASSET}.sha256"
 
 echo "✅ Installed ${NAME} v${TAG}"
-${NAME} --version
+${NAME} help
