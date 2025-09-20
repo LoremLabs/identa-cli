@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<meta charset="utf-8" />
+<title>Get Ident Agency - Redirecting</title>
+<script>
+  const dest = new URL('https://www.ident.agency' + location.pathname + location.search);
+  dest.searchParams.set('utm_source', 'get.identa-cli');
+  dest.searchParams.set('utm_medium', 'redirect');
+  location.replace(dest.toString());
+</script>
+<p>Redirecting…</p>
