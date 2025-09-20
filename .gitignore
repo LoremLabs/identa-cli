@@ -6,3 +6,4 @@ logs
 .env
 test-*
 .svelte-kit/
+.vercel

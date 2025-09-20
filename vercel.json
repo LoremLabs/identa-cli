@@ -1,0 +1,31 @@
+{
+  "redirects": [
+    {
+      "source": "/((?!install\\.sh$).*)",
+      "destination": "https://www.ident.agency",
+      "statusCode": 302
+    }
+  ],
+  "headers": [
+    {
+      "source": "/install.sh",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/plain; charset=utf-8"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=120, s-maxage=120"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        }
+      ]
+    }
+  ],
+  "public": true,
+  "cleanUrls": false,
+  "trailingSlash": false
+}
