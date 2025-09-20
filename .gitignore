@@ -1,0 +1,9 @@
+node_modules
+*.tmp
+tmp
+*.log
+logs
+.env
+test-*
+.svelte-kit/
+.vercel

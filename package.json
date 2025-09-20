@@ -1,0 +1,101 @@
+{
+  "name": "@ident-agency/identa-cli",
+  "version": "0.0.4",
+  "description": "Command-line interface for Ident Agency - secure, privacy-preserving identity and data management",
+  "main": "src/index.js",
+  "scripts": {
+    "format": "prettier --write \"**/*.{js,ts,tsx,md}\"",
+    "lint": "eslint .",
+    "test": "node src/ident-agency-cli.js --help",
+    "prepublishOnly": "npm run format",
+    "dev:setup": "echo 'To use local SDK core package, add the following to package.json:\\n\\n\"pnpm\": {\\n  \"overrides\": {\\n    \"@ident-agency/core\": \"file:../ident-agency-sdk/packages/core\"\\n  }\\n}'",
+    "link:global": "pnpm link --global",
+    "unlink:global": "pnpm unlink --global",
+    "publish:dry": "npm publish --dry-run",
+    "publish:latest": "npm publish --tag latest"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./src/index.js",
+      "require": "./src/index.js"
+    }
+  },
+  "bin": {
+    "identa": "src/ident-agency-cli.js"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "keywords": [
+    "identity",
+    "cli",
+    "encryption",
+    "privacy",
+    "authentication",
+    "ident-agency"
+  ],
+  "author": "Lorem Labs",
+  "license": "MIT",
+  "homepage": "https://www.ident.agency",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/loremlabs/ident-agency-sdk",
+    "directory": "identa-cli"
+  },
+  "bugs": {
+    "url": "https://github.com/loremlabs/ident-agency-sdk/issues"
+  },
+  "files": [
+    "src/**/*",
+    "patches/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@google-cloud/secret-manager": "6.0.1",
+    "@google-cloud/storage": "7.16.0",
+    "@iarna/toml": "2.2.5",
+    "@ident-agency/core": "0.0.4",
+    "@noble/hashes": "1.7.2",
+    "chalk": "5.4.1",
+    "cli-spinners": "3.2.0",
+    "conf": "13.1.0",
+    "dotenv": "16.3.2",
+    "elliptic": "6.6.1",
+    "get-stdin": "9.0.0",
+    "google-auth-library": "9.15.1",
+    "json-colorizer": "2.2.2",
+    "keytar": "^7.9.0",
+    "meow": "12.0.1",
+    "open": "9.1.0",
+    "ora": "8.2.0",
+    "prompts": "2.4.2",
+    "ripple-address-codec": "5.0.0",
+    "ripple-binary-codec": "2.3.0",
+    "ripple-keypairs": "2.0.0",
+    "toml": "3.0.0",
+    "xrpl": "4.2.5",
+    "yaml": "2.7.1"
+  },
+  "devDependencies": {
+    "babel-eslint": "10.1.0",
+    "env-paths": "3.0.0",
+    "eslint": "8.40.0",
+    "eslint-config-prettier": "8.8.0",
+    "eslint-plugin-prettier": "4.2.1",
+    "prettier": "2.8.8",
+    "tsx": "^4.20.5"
+  },
+  "packageManager": "pnpm@10.6.3+sha512.bb45e34d50a9a76e858a95837301bfb6bd6d35aea2c5d52094fa497a467c43f5c440103ce2511e9e0a2f89c3d6071baac3358fc68ac6fb75e2ceb3d2736065e6",
+  "pnpm": {
+    "patchedDependencies": {
+      "whatwg-url@5.0.0": "patches/whatwg-url@5.0.0.patch",
+      "tr46@0.0.3": "patches/tr46@0.0.3.patch"
+    }
+  }
+}

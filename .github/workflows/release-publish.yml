@@ -1,0 +1,239 @@
+name: Publish & Release identa CLI (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      dist_tag:
+        description: 'npm dist-tag (e.g. next, latest, beta)'
+        type: choice
+        required: true
+        default: next
+        options: [next, latest, beta]
+      bump_type:
+        description: 'Version bump type (ignored if explicit_version is set)'
+        required: true
+        default: 'patch'
+        type: choice
+        options: [none, patch, minor, major]
+      explicit_version:
+        description: 'Explicit version (e.g. 0.4.2). Leave blank to use bump_type.'
+        required: false
+        type: string
+      build_only:
+        description: 'Build binaries only (skip npm publish)'
+        required: false
+        type: boolean
+        default: false
+      skip_binaries:
+        description: 'Skip building binaries (npm publish only)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+env:
+  PKG_NAME: '@ident-agency/identa-cli'
+
+jobs:
+  get_version:
+    name: Get version for build-only mode
+    if: inputs.build_only == true
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read_version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Pull latest changes
+        run: git pull origin ${{ github.ref_name }} || true
+
+      - name: Read version
+        id: read_version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Current version: $VERSION"
+
+  publish_npm:
+    name: Publish to npm
+    if: inputs.build_only != true
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read_version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org/
+          cache: pnpm
+
+      - run: pnpm --version
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Read current version
+        id: current_version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Current version: $VERSION"
+
+      # Bump version (explicit)
+      - name: Bump version (explicit)
+        if: inputs.explicit_version != ''
+        run: pnpm version ${{ inputs.explicit_version }} --no-git-tag-version
+
+      # Bump version (by type)
+      - name: Bump version (by type)
+        if: inputs.explicit_version == '' && inputs.bump_type != 'none'
+        run: pnpm version ${{ inputs.bump_type }} --no-git-tag-version
+
+      - name: Read version after bump
+        id: read_version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Version after bump: $VERSION"
+
+      - name: Commit version bump
+        if: (inputs.explicit_version != '' || inputs.bump_type != 'none')
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git commit -m "chore: bump version to ${{ steps.read_version.outputs.version }}"
+          git push
+
+      - name: Publish to npm
+        run: pnpm publish --access public --tag ${{ inputs.dist_tag }} --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  tag_and_build:
+    name: Tag repo
+    needs: [publish_npm, get_version]
+    if: |
+      always() &&
+      (needs.publish_npm.result == 'success' || needs.get_version.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create git tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          VERSION="${{ needs.publish_npm.outputs.version || needs.get_version.outputs.version }}"
+          if [ -z "$VERSION" ]; then
+            echo "Error: VERSION is empty, cannot create tag"
+            exit 1
+          fi
+          echo "Creating tag v${VERSION}"
+          git tag "v${VERSION}" || true
+          git push origin "v${VERSION}" || true
+
+  build_binaries:
+    name: Build ${{ matrix.target }}
+    needs: [publish_npm, get_version]
+    if: |
+      always() &&
+      inputs.skip_binaries != true &&
+      (needs.publish_npm.result == 'success' || needs.get_version.result == 'success')
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: darwin-arm64
+          - os: macos-latest
+            target: darwin-x64
+          - os: ubuntu-latest
+            target: linux-x64
+          - os: windows-latest
+            target: win-x64
+    env:
+      BINARY_BASENAME: identa
+      VERSION: ${{ needs.publish_npm.outputs.version || needs.get_version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Build binary
+        shell: bash
+        run: |
+          OUT="${BINARY_BASENAME}-${{ matrix.target }}"
+          [[ "${{ matrix.target }}" == win-* ]] && OUT="${OUT}.exe"
+          bun build --compile src/ident-agency-cli.js --outfile "$OUT"
+          echo "OUT=$OUT" >> $GITHUB_ENV
+
+      - name: Generate SHA256
+        shell: bash
+        run: |
+          FILE="${OUT}"
+          if command -v shasum >/dev/null 2>&1; then
+            shasum -a 256 "$FILE" | awk '{print $1}' > "${FILE}.sha256"
+          else
+            sha256sum "$FILE" | awk '{print $1}' > "${FILE}.sha256"
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: identa-${{ matrix.target }}
+          path: |
+            ${{ env.OUT }}
+            ${{ env.OUT }}.sha256
+
+  release:
+    name: Create GitHub Release
+    needs: [publish_npm, get_version, build_binaries, tag_and_build]
+    if: |
+      always() &&
+      inputs.skip_binaries != true &&
+      needs.build_binaries.result == 'success'
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.publish_npm.outputs.version || needs.get_version.outputs.version }}
+    steps:
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Create/Update Release v${{ env.VERSION }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: v${{ env.VERSION }}
+          generate_release_notes: true
+          files: dist/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
