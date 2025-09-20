@@ -48,9 +48,7 @@ else
 fi
 
 chmod +x "${ASSET}"
-sudo mv "${ASSET}" /usr/local/bin/${NAME}
 rm -f "${ASSET}.sha256"
 
 echo "✅ Installed ${NAME} v${TAG}"
 ${NAME} --version
-
