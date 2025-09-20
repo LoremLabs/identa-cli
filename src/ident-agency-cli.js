@@ -21,9 +21,42 @@ import fs from 'fs';
 import { loadActions } from './actions/index.js'; // add new top level actions here
 import meow from 'meow';
 import path from 'path';
-const __dirname = new URL('.', import.meta.url).pathname;
 
-const pkgJson = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json')));
+// ——— Resolve version without requiring a real package.json at runtime ———
+function resolveVersion() {
+  // 1) Prefer a build-time injected constant (Bun: --define:PKG_VERSION=...)
+  if (typeof process !== 'undefined' && process.env && process.env.PKG_VERSION) {
+    return process.env.PKG_VERSION;
+  }
+
+  // 2) Dev/local fallback: try importing package.json (works in Node/Bun dev)
+  try {
+    // ESM-friendly JSON import (Node 20+/Bun)
+    // Note: some bundlers need the `.default`
+    // eslint-disable-next-line import/no-unresolved
+    // @ts-ignore
+    const pkg = require('../package.json'); // if you’re in CJS
+    return pkg.version;
+  } catch (_) {
+    /* ignore */
+  }
+  try {
+    // ESM path read (dev only; safe when the file exists)
+    const __dirname = new URL('.', import.meta.url).pathname;
+    const p = path.resolve(__dirname, '../package.json');
+    if (fs.existsSync(p)) {
+      return JSON.parse(fs.readFileSync(p, 'utf8')).version;
+    }
+  } catch (_) {
+    /* ignore */
+  }
+
+  // 3) Last resort
+  return 'dev';
+}
+
+const VERSION = resolveVersion();
+
 let personality = 'identa'; // Use the actual binary name instead of deriving from package name
 
 // load environment variables
@@ -160,8 +193,8 @@ commands({
   input: cli.input,
   config,
   personality,
-  version: pkgJson.version,
-  bin: `${__dirname}cli.js`,
+  version: VERSION,
+  // bin: `${__dirname}cli.js`,
 });
 
 // updateNotifier({
