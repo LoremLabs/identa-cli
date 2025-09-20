@@ -16,6 +16,10 @@ pnpm-workspace.yaml
 pnpm-lock.yaml
 .eslintrc*
 .prettierrc*
+DEVELOPMENT.md
+package.local.json.example
+test-input.txt
+.env.tmpl
 
 # Git
 .git/
