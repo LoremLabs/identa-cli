@@ -61,6 +61,46 @@ You can list all config options with:
 identa config list
 ```
 
+### API URL Configuration
+
+The CLI needs to know which Ident.Agency server to connect to. The API URL is resolved in the following priority order:
+
+1. **Command-line flag** `--api-url` (highest priority)
+2. **Config file setting** `apiBaseUrl`
+3. **Default** `https://www.ident.agency` (production)
+
+#### Set to Production (default)
+```bash
+# Remove any custom setting to use the default production URL
+identa config delete apiBaseUrl
+
+# Or explicitly set to production
+identa config set apiBaseUrl https://www.ident.agency
+```
+
+#### Set to Local Development
+```bash
+identa config set apiBaseUrl http://localhost:5173
+```
+
+#### Check Current Setting
+```bash
+identa config get apiBaseUrl
+```
+
+#### Override Temporarily
+Use the `--api-url` flag to override for a single command:
+```bash
+identa auth login --api-url=https://www.ident.agency
+```
+
+#### Debug Mode
+Use `--debug` to see which API URL is being used and its source:
+```bash
+identa auth login --debug
+# Output: 🔧 API URL: https://www.ident.agency (from config)
+```
+
 ## Secrets
 
 An example action "secrets" is provided to manage secrets. This allows you to store and retrieve secrets securely using the os secure enclave via keytar or GCP Secret Manager.
