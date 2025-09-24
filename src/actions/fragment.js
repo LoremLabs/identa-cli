@@ -276,11 +276,76 @@ export const exec = async (context) => {
     await client.ready();
 
     // Add unlock method selection handler
-    client.on('unlock_method_selection', (data) => {
+    client.on('unlock_method_selection', async (data) => {
       const { methods, resolve, reject } = data;
 
+      // Get detailed methods directly instead of trying to work with what the SDK provides
+      let displayMethods = [];
+      try {
+        const detailedMethods = await client.getDetailedUnlockMethods();
+
+        // Build display methods from detailed methods using keyId as unique identifier
+        displayMethods = detailedMethods.map((dm) => {
+          // Build display name based on method type
+          let displayName = dm.method.charAt(0).toUpperCase() + dm.method.slice(1);
+          let detail = '';
+
+          if (dm.method === 'password') {
+            displayName = dm.description || 'Password';
+            if (dm.createdAt) {
+              detail = new Date(dm.createdAt).toLocaleDateString();
+            }
+          } else if (dm.method === 'passkey') {
+            displayName = dm.description || 'Passkey';
+            // Add type and credential info for passkeys
+            if (dm.type === 'passkey-prf') {
+              detail = 'PRF';
+            } else if (dm.type === 'passkey-blob') {
+              detail = 'Large Blob';
+            } else if (dm.type === 'passkey-server') {
+              detail = 'Touch ID';
+            }
+            // Add credential ID to distinguish multiple passkeys
+            if (dm.credentialId) {
+              const shortId = dm.credentialId.substring(0, 8);
+              detail = detail ? `${detail} (${shortId}...)` : `(${shortId}...)`;
+            }
+            if (dm.createdAt) {
+              detail += detail ? `, ${new Date(dm.createdAt).toLocaleDateString()}` : new Date(dm.createdAt).toLocaleDateString();
+            }
+          } else if (dm.method === 'device') {
+            displayName = dm.device?.description || `Device Key`;
+            if (dm.device?.platform) {
+              detail = dm.device.platform;
+            }
+            if (dm.createdAt) {
+              detail += detail ? `, ${new Date(dm.createdAt).toLocaleDateString()}` : new Date(dm.createdAt).toLocaleDateString();
+            }
+          } else if (dm.method === 'recovery') {
+            displayName = 'Recovery Phrase';
+            if (dm.createdAt) {
+              detail = new Date(dm.createdAt).toLocaleDateString();
+            }
+          } else if (dm.method === 'ssh') {
+            displayName = 'SSH Key';
+            if (dm.createdAt) {
+              detail = new Date(dm.createdAt).toLocaleDateString();
+            }
+          }
+
+          return {
+            id: dm.keyId,  // Use keyId as the unique identifier
+            displayName,
+            detail: detail || undefined
+          };
+        });
+      } catch (err) {
+        // Fall back to SDK-provided methods if we can't get detailed methods
+        displayMethods = methods;
+      }
+
       console.log(chalk.blue('🔐 Multiple unlock methods available. Choose one:'));
-      methods.forEach((method, index) => {
+      displayMethods.forEach((method, index) => {
         const displayText = method.detail
           ? `${method.displayName} ${chalk.gray(`(${method.detail})`)}`
           : method.displayName;
@@ -290,12 +355,12 @@ export const exec = async (context) => {
       prompts({
         type: 'number',
         name: 'choice',
-        message: `Select unlock method (1-${methods.length}):`,
+        message: `Select unlock method (1-${displayMethods.length}):`,
         min: 1,
-        max: methods.length,
+        max: displayMethods.length,
         validate: (value) => {
-          if (!value || value < 1 || value > methods.length) {
-            return `Please enter a number between 1 and ${methods.length}`;
+          if (!value || value < 1 || value > displayMethods.length) {
+            return `Please enter a number between 1 and ${displayMethods.length}`;
           }
           return true;
         },
@@ -304,7 +369,7 @@ export const exec = async (context) => {
           if (!response.choice) {
             reject(new Error('No unlock method selected'));
           } else {
-            const selectedMethod = methods[response.choice - 1];
+            const selectedMethod = displayMethods[response.choice - 1];
             console.log(chalk.white(`✅ Selected: ${selectedMethod.displayName}`));
             resolve(selectedMethod.id);
           }
