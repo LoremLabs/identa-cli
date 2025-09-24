@@ -26,11 +26,11 @@ function createDeviceKeyProvider() {
       throw new Error(`Device key not found for: ${keyIdOrDeviceId}`);
     }
 
-    console.log(
-      chalk.blue(
-        `🔐 Using device key from secure storage (${secrets.type()}): ${key} ${deviceKeyB64}`
-      )
-    );
+    // console.log(
+    //   chalk.blue(
+    //     `🔐 Using device key from secure storage (${secrets.type()}): ${key} ${deviceKeyB64}`
+    //   )
+    // );
 
     return Buffer.from(decodeBase64Url(deviceKeyB64));
   };

@@ -1039,7 +1039,7 @@ function createDeviceKeyProvider() {
     // Format: "device:xxx-xxx:timestamp"
     let key = `device-key-${keyIdOrDeviceId}`;
 
-    console.log(chalk.gray(`🔐 Retrieving device key for: ${key}`));
+    // console.log(chalk.gray(`🔐 Retrieving device key for: ${key}`));
 
     let deviceKeyB64url = await secrets.get(service, key);
 
@@ -1051,9 +1051,9 @@ function createDeviceKeyProvider() {
     if (decoded.length !== 32) {
       throw new Error('Invalid device key length retrieved from secure storage');
     }
-    console.log(
-      chalk.gray('🔐 Device key retrieved successfully:', Buffer.from(decoded).toString('hex'))
-    );
+    // console.log(
+    //   chalk.gray('🔐 Device key retrieved successfully:', Buffer.from(decoded).toString('hex'))
+    // );
     return Buffer.from(decoded);
   };
 }
