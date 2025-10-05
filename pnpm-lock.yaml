@@ -4,9 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-overrides:
-  punycode: 2.1.1
-
 patchedDependencies:
   tr46@0.0.3:
     hash: a30a63e5eaa7875a4152f5a816e31ecd693cb097298916a275cf193267cbbfd5
@@ -29,8 +26,8 @@ importers:
         specifier: 2.2.5
         version: 2.2.5
       '@ident-agency/core':
-        specifier: 0.0.4
-        version: 0.0.4
+        specifier: 0.0.9
+        version: 0.0.9
       '@noble/hashes':
         specifier: 1.7.2
         version: 1.7.2
@@ -380,8 +377,8 @@ packages:
   '@iarna/toml@2.2.5':
     resolution: {integrity: sha512-trnsAYxU3xnS1gPHPyU961coFyLkh4gAD/0zQ5mymY4yOZ+CYvsPqUbOFSw0aDM4y0tV7tiFxL/1XfXPNC6IPg==}
 
-  '@ident-agency/core@0.0.4':
-    resolution: {integrity: sha512-nOtdY4cuSCdpRc7+4y81XPQVOqNChsgoPsNiy3zagOeHHzoukldPTPsI4x88Z3bT5rMSMmTixWReBpkXIibdsQ==}
+  '@ident-agency/core@0.0.9':
+    resolution: {integrity: sha512-8F5+L9c0kCbBREwbUYtwCIxi3dcZnGVDh1DQBb5EGJke3xI3yCAvYur3mydZ1IGIlwoNLYYqKr0v0+mWcR4uGQ==}
 
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
@@ -2167,7 +2164,7 @@ snapshots:
 
   '@iarna/toml@2.2.5': {}
 
-  '@ident-agency/core@0.0.4':
+  '@ident-agency/core@0.0.9':
     dependencies:
       '@hpke/core': 1.7.4
       '@noble/curves': 1.9.7

@@ -194,7 +194,7 @@ identa config set apiBaseUrl https://www.ident.agency
 
 #### Set to Local Development
 ```bash
-identa config set apiBaseUrl http://localhost:5173
+identa config set apiBaseUrl https://www.dev.ident.agency:5173
 ```
 
 #### Check Current Setting
